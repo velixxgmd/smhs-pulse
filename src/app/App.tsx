@@ -1,0 +1,129 @@
+import React, { useState, useEffect } from 'react';
+import { AnimatePresence } from 'motion/react';
+import { Toaster } from 'sonner';
+import { ModeProvider } from './context/ModeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { PageShell } from './components/layout/PageShell';
+import { LandingPage } from './pages/public/LandingPage';
+import { CodeEntryPage } from './pages/public/CodeEntryPage';
+import { BallotPage } from './pages/public/BallotPage';
+import { ReviewPage } from './pages/public/ReviewPage';
+import { SuccessPage } from './pages/public/SuccessPage';
+import { AdminLoginPage } from './pages/admin/AdminLoginPage';
+import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
+import { hasSessionVoted } from './services/securityService';
+import type { VotingCode } from './types';
+
+type PublicPage = 'landing' | 'code-entry' | 'ballot' | 'review' | 'success';
+
+function AppContent() {
+  const { isAdminAuthenticated } = useAuth();
+  const [publicPage, setPublicPage] = useState<PublicPage>('landing');
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [validatedCode, setValidatedCode] = useState<VotingCode | null>(null);
+  const [ballotSelections, setBallotSelections] = useState<Record<string, string>>({});
+
+  // Redirect to success if session already voted
+  useEffect(() => {
+    if (hasSessionVoted()) {
+      setPublicPage('success');
+    }
+  }, []);
+
+  const handleCodeValidated = (code: VotingCode) => {
+    setValidatedCode(code);
+    setPublicPage('ballot');
+  };
+
+  const handleBallotReview = (selections: Record<string, string>) => {
+    setBallotSelections(selections);
+    setPublicPage('review');
+  };
+
+  if (showAdminDashboard) {
+    return (
+      <>
+        <AdminDashboardPage onClose={() => setShowAdminDashboard(false)} />
+        <Toaster richColors position="top-right" />
+      </>
+    );
+  }
+
+  return (
+    <PageShell>
+      <AnimatePresence mode="wait">
+        {publicPage === 'landing' && (
+          <LandingPage
+            key="landing"
+            onStartVoting={() => setPublicPage('code-entry')}
+            onAdminAccess={() => {
+              if (isAdminAuthenticated) {
+                setShowAdminDashboard(true);
+              } else {
+                setShowAdminLogin(true);
+              }
+            }}
+          />
+        )}
+        {publicPage === 'code-entry' && (
+          <CodeEntryPage
+            key="code-entry"
+            onBack={() => setPublicPage('landing')}
+            onCodeValidated={handleCodeValidated}
+          />
+        )}
+        {publicPage === 'ballot' && validatedCode && (
+          <BallotPage
+            key="ballot"
+            votingCode={validatedCode}
+            onBack={() => setPublicPage('code-entry')}
+            onReview={handleBallotReview}
+          />
+        )}
+        {publicPage === 'review' && validatedCode && (
+          <ReviewPage
+            key="review"
+            votingCode={validatedCode}
+            selections={ballotSelections}
+            onBack={() => setPublicPage('ballot')}
+            onSuccess={() => setPublicPage('success')}
+          />
+        )}
+        {publicPage === 'success' && (
+  <SuccessPage
+    key="success"
+    onDone={() => {
+      sessionStorage.removeItem('vote_submitted');
+      setValidatedCode(null);
+      setBallotSelections({});
+      setPublicPage('landing');
+    }}
+  />
+)}
+      </AnimatePresence>
+
+      {showAdminLogin && (
+        <AdminLoginPage
+          onClose={() => setShowAdminLogin(false)}
+          onAuthenticated={() => {
+            setShowAdminLogin(false);
+            setShowAdminDashboard(true);
+          }}
+        />
+      )}
+
+      <Toaster richColors position="top-right" />
+    </PageShell>
+  );
+}
+
+export default function App() {
+  return (
+    <ModeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ModeProvider>
+  );
+}

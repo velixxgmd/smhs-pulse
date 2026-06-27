@@ -1,0 +1,357 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import {
+  LayoutDashboard, Users, Key, Download, Settings, Shield, LogOut,
+  TrendingUp, Clock, AlertTriangle, Activity, Zap, Play, Pause, Square,
+  RefreshCw, Database, ChevronRight
+} from 'lucide-react';
+import { electionService } from '../../services/electionService';
+import { useMode } from '../../context/ModeContext';
+import { useAuth } from '../../context/AuthContext';
+import type { TurnoutData, AttemptLog, Election } from '../../types';
+import { AdminCandidatesPage } from './AdminCandidatesPage';
+import { AdminCodesPage } from './AdminCodesPage';
+import { AdminExportPage } from './AdminExportPage';
+import { AdminSettingsPage } from './AdminSettingsPage';
+import { AdminResultsPage } from './AdminResultsPage';
+import { AdminAttemptLogsPage } from './AdminAttemptLogsPage';
+import { AdminMaintenancePage } from './AdminMaintenancePage';
+
+type AdminTab = 'dashboard' | 'candidates' | 'codes' | 'export' | 'settings' | 'results' | 'logs' | 'maintenance';
+
+interface Props {
+  onClose: () => void;
+}
+
+function AnimatedCounter({ target, duration = 1200 }: { target: number; duration?: number }) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setVal(Math.round(eased * target));
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    const raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return <>{val.toLocaleString()}</>;
+}
+
+export function AdminDashboardPage({ onClose }: Props) {
+  const { mode, setMode } = useMode();
+  const { logout } = useAuth();
+  const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [turnout, setTurnout] = useState<TurnoutData[]>([]);
+  const [logs, setLogs] = useState<AttemptLog[]>([]);
+  const [election, setElection] = useState<Election | null>(null);
+  const [stats, setStats] = useState({ totalCodes: 0, totalVoted: 0, remaining: 0, turnoutPercent: 0, lastVoteTime: '' });
+  const [loading, setLoading] = useState(true);
+  const [showModeModal, setShowModeModal] = useState(false);
+  const [pendingMode, setPendingMode] = useState<'live' | null>(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [t, l, e, s] = await Promise.all([
+        electionService.getTurnout(),
+        electionService.getRecentAttempts(10),
+        electionService.getElection(),
+        electionService.getTotalStats(),
+      ]);
+      setTurnout(t);
+      setLogs(l);
+      setElection(e);
+      setStats(s as typeof stats);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData, tab]);
+
+  const handleModeSwitch = (newMode: 'demo' | 'live') => {
+    if (newMode === 'live') {
+      setPendingMode('live');
+      setShowModeModal(true);
+    } else {
+      setMode('demo');
+    }
+  };
+
+  const confirmLiveSwitch = () => {
+    setMode('live');
+    setShowModeModal(false);
+    setPendingMode(null);
+    setTimeout(loadData, 200);
+  };
+
+  const handleStatusChange = async (status: import('../../types').ElectionStatus) => {
+    await electionService.updateElectionStatus(status);
+    await loadData();
+  };
+
+  const navItems: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { id: 'candidates', label: 'Candidates', icon: <Users size={16} /> },
+    { id: 'codes', label: 'Generate Codes', icon: <Key size={16} /> },
+    { id: 'export', label: 'Export Center', icon: <Download size={16} /> },
+    { id: 'results', label: 'Results', icon: <TrendingUp size={16} /> },
+    { id: 'logs', label: 'Security Logs', icon: <Shield size={16} /> },
+    { id: 'maintenance', label: 'Maintenance', icon: <Database size={16} /> },
+    { id: 'settings', label: 'Settings', icon: <Settings size={16} /> },
+  ];
+
+  const statusColors: Record<string, string> = { LIVE: '#22C55E', UPCOMING: '#71717A', PAUSED: '#FBBF24', CLOSED: '#EF4444', ARCHIVED: '#52525B', RESULTS_PUBLISHED: '#22D3EE' };
+  const statusLabel = election?.status || 'UPCOMING';
+
+  return (
+    <div className="fixed inset-0 z-40 flex" style={{ background: '#09090B' }}>
+      {/* Sidebar */}
+      <aside className="w-64 flex-shrink-0 flex flex-col h-full border-r"
+        style={{ background: 'rgba(17,24,39,0.95)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(20px)' }}>
+        {/* Logo */}
+        <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #7C3AED, #A855F7)' }}>
+              <Zap size={14} className="text-white" />
+            </div>
+            <div>
+              <div className="font-bold text-white text-sm">Pulse by SMHS</div>
+              <div className="text-xs" style={{ color: '#52525B' }}>Admin Console</div>
+            </div>
+          </div>
+          {/* Mode badge */}
+          <div className="flex gap-2">
+            {(['demo', 'live'] as const).map(m => (
+              <button key={m} onClick={() => handleModeSwitch(m)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                style={{
+                  background: mode === m ? (m === 'demo' ? 'rgba(251,191,36,0.15)' : 'rgba(34,197,94,0.15)') : 'rgba(255,255,255,0.04)',
+                  color: mode === m ? (m === 'demo' ? '#FBBF24' : '#22C55E') : '#71717A',
+                  border: `1px solid ${mode === m ? (m === 'demo' ? 'rgba(251,191,36,0.25)' : 'rgba(34,197,94,0.25)') : 'transparent'}`,
+                }}>
+                {m === 'demo' ? '🟡 Demo' : '🟢 Live'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Election status */}
+        {election && (
+          <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <div className="text-xs mb-1" style={{ color: '#52525B' }}>Active Election</div>
+            <div className="text-sm font-semibold text-white truncate">{election.name} {election.year}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusColors[statusLabel] }} />
+              <span className="text-xs font-medium" style={{ color: statusColors[statusLabel] }}>{statusLabel}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => setTab(item.id)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left focus:outline-none focus:ring-1 focus:ring-purple-500"
+              style={{
+                background: tab === item.id ? 'rgba(124,58,237,0.15)' : 'transparent',
+                color: tab === item.id ? '#A855F7' : '#71717A',
+                border: tab === item.id ? '1px solid rgba(124,58,237,0.2)' : '1px solid transparent',
+              }}>
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <button onClick={() => { logout(); onClose(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors"
+            style={{ color: '#71717A' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#71717A')}>
+            <LogOut size={15} /> Logout
+          </button>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 overflow-y-auto">
+        {tab === 'dashboard' && (
+          <div className="p-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h1 className="text-2xl font-bold text-white mb-1">
+                  Good morning, Election Committee
+                </h1>
+                <p className="text-sm" style={{ color: '#71717A' }}>
+                  SMHS Election Command Center — {election?.name} {election?.year}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={loadData} className="p-2 rounded-xl transition-colors" style={{ background: 'rgba(255,255,255,0.05)', color: '#71717A' }} aria-label="Refresh">
+                  <RefreshCw size={16} />
+                </button>
+                {/* Election controls */}
+                {election?.status === 'UPCOMING' && (
+                  <button onClick={() => handleStatusChange('LIVE')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <Play size={14} /> Start Election
+                  </button>
+                )}
+                {election?.status === 'LIVE' && (
+                  <>
+                    <button onClick={() => handleStatusChange('PAUSED')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(251,191,36,0.15)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.25)' }}>
+                      <Pause size={14} /> Pause
+                    </button>
+                    <button onClick={() => handleStatusChange('CLOSED')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
+                      <Square size={14} /> End Election
+                    </button>
+                  </>
+                )}
+                {election?.status === 'PAUSED' && (
+                  <button onClick={() => handleStatusChange('LIVE')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <Play size={14} /> Resume
+                  </button>
+                )}
+                {election?.status === 'CLOSED' && (
+                  <button onClick={() => handleStatusChange('RESULTS_PUBLISHED')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                    style={{ background: 'rgba(34,211,238,0.15)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}>
+                    <TrendingUp size={14} /> Publish Results
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Stat cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+              {[
+                { label: 'Codes Generated', value: stats.totalCodes, icon: <Key size={20} />, color: '#7C3AED' },
+                { label: 'Votes Cast', value: stats.totalVoted, icon: <Activity size={20} />, color: '#22C55E' },
+                { label: 'Turnout', value: `${stats.turnoutPercent}%`, icon: <TrendingUp size={20} />, color: '#22D3EE', isString: true },
+                { label: 'Remaining', value: stats.remaining, icon: <Clock size={20} />, color: '#FBBF24' },
+              ].map(card => (
+                <motion.div key={card.label}
+                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                  className="glass rounded-2xl p-6 card-hover">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-2 rounded-xl" style={{ background: `${card.color}20` }}>
+                      <div style={{ color: card.color }}>{card.icon}</div>
+                    </div>
+                    <ChevronRight size={14} style={{ color: '#3f3f46' }} />
+                  </div>
+                  <div className="text-3xl font-bold text-white mb-1 tabular-nums">
+                    {card.isString ? card.value : <AnimatedCounter target={card.value as number} />}
+                  </div>
+                  <div className="text-sm" style={{ color: '#71717A' }}>{card.label}</div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Turnout bar chart */}
+              <div className="glass rounded-2xl p-6">
+                <h3 className="text-base font-semibold text-white mb-6">Class Turnout Overview</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={turnout} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <XAxis dataKey={d => `${d.class}${d.section}`} tick={{ fill: '#71717A', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#71717A', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 100]} />
+                    <Tooltip
+                      contentStyle={{ background: '#1F2330', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, color: '#FAFAFA', fontSize: 12 }}
+                      formatter={(v, n, props) => [`${props.payload.voted}/${props.payload.total} (${v}%)`, 'Turnout']}
+                      labelFormatter={l => `Class ${l}`}
+                    />
+                    <Bar dataKey="percent" radius={[4, 4, 0, 0]}>
+                      {turnout.map((entry, i) => (
+                        <Cell key={i} fill={entry.percent >= 80 ? '#22C55E' : entry.percent >= 60 ? '#7C3AED' : '#FBBF24'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Attempt logs */}
+              <div className="glass rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-base font-semibold text-white">Security Log</h3>
+                  <button onClick={() => setTab('logs')} className="text-xs" style={{ color: '#7C3AED' }}>View all →</button>
+                </div>
+                {logs.length === 0 ? (
+                  <div className="text-center py-8" style={{ color: '#52525B' }}>
+                    <Shield size={28} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No blocked attempts logged.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {logs.slice(0, 6).map(log => (
+                      <div key={log.id} className="flex items-center gap-3 py-2 border-b last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                        <AlertTriangle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold" style={{ color: '#EF4444' }}>{log.reason}</span>
+                          {log.code && <span className="text-xs ml-2 font-mono" style={{ color: '#71717A' }}>{log.code}</span>}
+                        </div>
+                        <span className="text-xs" style={{ color: '#52525B' }}>{new Date(log.time).toLocaleTimeString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Last vote time */}
+            {stats.lastVoteTime && (
+              <div className="glass rounded-2xl p-4 flex items-center gap-3">
+                <Clock size={15} style={{ color: '#71717A' }} />
+                <span className="text-sm" style={{ color: '#71717A' }}>
+                  Last vote recorded at <strong style={{ color: '#A1A1AA' }}>{new Date(stats.lastVoteTime).toLocaleString()}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'candidates' && <AdminCandidatesPage />}
+        {tab === 'codes' && <AdminCodesPage />}
+        {tab === 'export' && <AdminExportPage />}
+        {tab === 'results' && <AdminResultsPage />}
+        {tab === 'logs' && <AdminAttemptLogsPage />}
+        {tab === 'maintenance' && <AdminMaintenancePage mode={mode} onRestored={loadData} />}
+        {tab === 'settings' && <AdminSettingsPage />}
+      </main>
+
+      {/* Live mode warning modal */}
+      {showModeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-elevated rounded-2xl p-8 max-w-md w-full mx-4">
+            <AlertTriangle size={36} style={{ color: '#FBBF24', marginBottom: 16 }} />
+            <h3 className="text-xl font-bold text-white mb-2">Switch to Live Mode?</h3>
+            <p className="text-sm mb-6" style={{ color: '#A1A1AA' }}>
+              You are about to switch to <strong style={{ color: '#22C55E' }}>LIVE election mode</strong>. All operations will affect real election data in Supabase.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowModeModal(false)} className="flex-1 py-3 rounded-xl font-semibold text-sm"
+                style={{ background: 'rgba(255,255,255,0.06)', color: '#A1A1AA' }}>
+                Cancel
+              </button>
+              <button onClick={confirmLiveSwitch} className="flex-1 py-3 rounded-xl font-semibold text-white text-sm"
+                style={{ background: 'linear-gradient(135deg, #22C55E, #16A34A)' }}>
+                Confirm & Switch to Live
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
