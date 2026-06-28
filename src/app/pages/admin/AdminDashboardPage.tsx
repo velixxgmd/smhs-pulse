@@ -71,23 +71,39 @@ export function AdminDashboardPage({ onClose }: Props) {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData, tab]);
+ useEffect(() => {
+  loadData();
 
-  const handleModeSwitch = (newMode: 'demo' | 'live') => {
-    if (newMode === 'live') {
-      setPendingMode('live');
-      setShowModeModal(true);
-    } else {
-      setMode('demo');
-    }
-  };
+  if (tab !== "dashboard") return;
 
-  const confirmLiveSwitch = () => {
-    setMode('live');
-    setShowModeModal(false);
-    setPendingMode(null);
-    setTimeout(loadData, 200);
-  };
+  const interval = setInterval(loadData, 5000);
+
+  return () => clearInterval(interval);
+}, [loadData, tab]);
+
+const handleModeSwitch = async (newMode: "demo" | "live") => {
+  if (newMode === mode) return;
+
+  if (newMode === "live") {
+    setPendingMode("live");
+    setShowModeModal(true);
+    return;
+  }
+
+  await electionService.updateElectionStatus(undefined, "demo");
+  setMode("demo");
+  await loadData();
+};
+
+const confirmLiveSwitch = async () => {
+  await electionService.updateElectionStatus(undefined, "live");
+
+  setMode("live");
+  setShowModeModal(false);
+  setPendingMode(null);
+
+  await loadData();
+};
 
   const handleStatusChange = async (status: import('../../types').ElectionStatus) => {
     await electionService.updateElectionStatus(status);

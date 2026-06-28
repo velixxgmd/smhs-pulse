@@ -45,6 +45,18 @@ export function ModeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEYS.DEVICE_MODE, d);
   };
 
+useEffect(() => {
+  const handler = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEYS.MODE && e.newValue) {
+      setModeState(e.newValue as ElectionMode);
+    }
+  };
+
+  window.addEventListener("storage", handler);
+
+  return () => window.removeEventListener("storage", handler);
+}, []);
+
   return (
     <ModeContext.Provider value={{ mode, setMode, graphicsQuality, setGraphicsQuality, deviceMode, setDeviceMode, reducedMotion }}>
       {children}

@@ -213,21 +213,25 @@ app.get("/make-server-c9775fa5/election", async (c) => {
 
 app.put("/make-server-c9775fa5/election/status", async (c) => {
   try {
-    const { status } = await c.req.json();
-    const election = await getElection() as Record<string, unknown>;
-    election.status = status;
-    await kv.set("election:current", election);
-    return c.json(election);
-  } catch (e) { return c.json({ error: String(e) }, 500); }
-});
+    const { status, mode } = await c.req.json();
 
-app.post("/make-server-c9775fa5/log-attempt", async (c) => {
-  try {
-    const body = await c.req.json();
-    const id = `${Date.now()}-${Math.random().toString(36).substring(2)}`;
-    await kv.set(`log:${id}`, { ...body, id });
-    return c.json({ success: true });
-  } catch (e) { return c.json({ error: String(e) }, 500); }
+    const election = await getElection() as Record<string, unknown>;
+
+    if (status) {
+      election.status = status;
+    }
+
+    if (mode) {
+      election.mode = mode;
+    }
+
+    await kv.set("election:current", election);
+
+    return c.json(election);
+
+  } catch (e) {
+    return c.json({ error: String(e) }, 500);
+  }
 });
 
 app.get("/make-server-c9775fa5/attempt-logs", async (c) => {
