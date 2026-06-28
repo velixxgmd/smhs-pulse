@@ -100,9 +100,20 @@ export const LiveElectionService = {
     return api(`/election`);
   },
 
-  async updateElectionStatus(status: ElectionStatus): Promise<void> {
-    await api(`/election/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-  },
+  async updateElectionStatus(
+    status?: ElectionStatus,
+    mode?: "demo" | "live"
+): Promise<void> {
+
+    await api(`/election/status`, {
+        method: "PUT",
+        body: JSON.stringify({
+            status,
+            mode
+        })
+    });
+
+},
 
   async verifyAdminPassword(password: string): Promise<boolean> {
     try {
