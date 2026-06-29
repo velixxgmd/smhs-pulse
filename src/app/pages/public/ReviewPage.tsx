@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, AlertTriangle, Loader2, User, CheckCircle2 } from 'lucide-react';
 import { electionService } from '../../services/electionService';
+import { useRefresh } from '../../context/RefreshContext';
 import { generateDeviceHash, generateSessionId } from '../../services/securityService';
 import type { VotingCode, Candidate } from '../../types';
 
@@ -13,17 +14,38 @@ interface Props {
 }
 
 export function ReviewPage({ votingCode, selections, onBack, onSuccess }: Props) {
+  const { revision } = useRefresh();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [electionStatus, setElectionStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    electionService.getCandidates().then(setCandidates);
-  }, []);
+    (async () => {
+      try {
+        const [cs, e] = await Promise.all([
+          electionService.getCandidates(),
+          electionService.getElection(),
+        ]);
+        setCandidates(cs);
+        setElectionStatus(e.status);
+      } catch {
+      }
+    })();
+  }, [revision]);
 
   const getCandidateById = (id: string) => candidates.find(c => c.id === id);
 
   const handleSubmit = async () => {
+    if (electionStatus && electionStatus !== 'LIVE') {
+      const msg =
+        electionStatus === 'UPCOMING' ? 'Voting has not started yet.' :
+        electionStatus === 'PAUSED' ? 'Voting is temporarily paused. Please wait for it to resume.' :
+        'Voting is currently closed.';
+      setError(msg);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {

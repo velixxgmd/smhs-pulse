@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { electionService } from '../../services/electionService';
+import { useRefresh } from '../../context/RefreshContext';
 import type { AttemptLog } from '../../types';
 
 const REASON_COLORS: Record<string, string> = {
@@ -11,6 +12,7 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 export function AdminAttemptLogsPage() {
+  const { revision } = useRefresh();
   const [logs, setLogs] = useState<AttemptLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState(50);
@@ -21,7 +23,7 @@ export function AdminAttemptLogsPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [limit]);
+  useEffect(() => { load(); }, [limit, revision]);
 
   return (
     <div className="p-8">

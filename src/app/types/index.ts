@@ -2,6 +2,8 @@ export type ElectionMode = 'demo' | 'live';
 
 export type ElectionStatus = 'UPCOMING' | 'LIVE' | 'PAUSED' | 'CLOSED' | 'ARCHIVED' | 'RESULTS_PUBLISHED';
 
+export type VotingLayout = 'multi' | 'single';
+
 export type CodeStatus = 'unused' | 'used';
 
 export type AttemptReason = 'USED_CODE' | 'DUPLICATE_DEVICE' | 'INVALID' | 'SESSION_REPLAY';
@@ -71,6 +73,8 @@ export interface Election {
   name: string;
   year: number;
   status: ElectionStatus;
+  mode?: ElectionMode;
+  voting_layout?: VotingLayout;
   created_at: string;
   ended_at?: string;
   total_votes?: number;

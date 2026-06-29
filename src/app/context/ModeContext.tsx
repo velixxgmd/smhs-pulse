@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { ElectionMode, GraphicsQuality, DeviceMode } from '../types';
 import { STORAGE_KEYS } from '../lib/constants';
+import { electionService } from "../services/electionService";
+import { setCurrentMode } from "../services/electionService";
+import { SERVER_BASE } from "../lib/constants";
 
 interface ModeContextValue {
   mode: ElectionMode;
-  setMode: (mode: ElectionMode) => void;
+  setMode: (mode: ElectionMode) => Promise<void>;
   graphicsQuality: GraphicsQuality;
   setGraphicsQuality: (q: GraphicsQuality) => void;
   deviceMode: DeviceMode;
@@ -15,9 +18,7 @@ interface ModeContextValue {
 const ModeContext = createContext<ModeContextValue | null>(null);
 
 export function ModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<ElectionMode>(() => {
-    return (localStorage.getItem(STORAGE_KEYS.MODE) as ElectionMode) || 'demo';
-  });
+  const [mode, setModeState] = useState<ElectionMode>("demo");
   const [graphicsQuality, setGraphicsQualityState] = useState<GraphicsQuality>(() => {
     return (localStorage.getItem(STORAGE_KEYS.GRAPHICS_QUALITY) as GraphicsQuality) || 'balanced';
   });
@@ -30,10 +31,32 @@ export function ModeProvider({ children }: { children: ReactNode }) {
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
   );
 
-  const setMode = (m: ElectionMode) => {
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.GRAPHICS_QUALITY && e.newValue) {
+        setGraphicsQualityState(e.newValue as GraphicsQuality);
+      }
+      if (e.key === STORAGE_KEYS.DEVICE_MODE && e.newValue) {
+        setDeviceModeState(e.newValue as DeviceMode);
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const setMode = async (m: ElectionMode) => {
+
     setModeState(m);
-    localStorage.setItem(STORAGE_KEYS.MODE, m);
-  };
+
+    setCurrentMode(m);
+
+    await electionService.updateElectionStatus(
+        undefined,
+        m
+    );
+
+};
 
   const setGraphicsQuality = (q: GraphicsQuality) => {
     setGraphicsQualityState(q);
@@ -46,15 +69,32 @@ export function ModeProvider({ children }: { children: ReactNode }) {
   };
 
 useEffect(() => {
-  const handler = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEYS.MODE && e.newValue) {
-      setModeState(e.newValue as ElectionMode);
-    }
-  };
 
-  window.addEventListener("storage", handler);
+    const syncMode = async () => {
 
-  return () => window.removeEventListener("storage", handler);
+        try {
+
+            const res = await fetch(
+    `${SERVER_BASE}/election`
+);
+
+const election = await res.json();
+
+            if (election.mode) {
+               setModeState(election.mode);
+               setCurrentMode(election.mode);
+            }
+        } catch (e) {
+        }
+
+    };
+
+    syncMode();
+
+    const interval = setInterval(syncMode, 3000);
+
+    return () => clearInterval(interval);
+
 }, []);
 
   return (

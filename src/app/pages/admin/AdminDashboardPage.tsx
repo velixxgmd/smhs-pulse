@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   LayoutDashboard, Users, Key, Download, Settings, Shield, LogOut,
   TrendingUp, Clock, AlertTriangle, Activity, Zap, Play, Pause, Square,
-  RefreshCw, Database, ChevronRight
+  RefreshCw, Database, ChevronRight, Loader2, X
 } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useMode } from '../../context/ModeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useRefresh } from '../../context/RefreshContext';
 import type { TurnoutData, AttemptLog, Election } from '../../types';
 import { AdminCandidatesPage } from './AdminCandidatesPage';
 import { AdminCodesPage } from './AdminCodesPage';
@@ -43,6 +44,7 @@ function AnimatedCounter({ target, duration = 1200 }: { target: number; duration
 
 export function AdminDashboardPage({ onClose }: Props) {
   const { mode, setMode } = useMode();
+  const { revision } = useRefresh();
   const { logout } = useAuth();
   const [tab, setTab] = useState<AdminTab>('dashboard');
   const [turnout, setTurnout] = useState<TurnoutData[]>([]);
@@ -52,6 +54,12 @@ export function AdminDashboardPage({ onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [showModeModal, setShowModeModal] = useState(false);
   const [pendingMode, setPendingMode] = useState<'live' | null>(null);
+  const [showNewElectionModal, setShowNewElectionModal] = useState(false);
+  const [startingNewElection, setStartingNewElection] = useState(false);
+  const [newElectionName, setNewElectionName] = useState('');
+  const [newElectionYear, setNewElectionYear] = useState('');
+  const [newElectionBaseline, setNewElectionBaseline] = useState<{ name: string; year: number } | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('smhs_admin_sidebar_collapsed') === '1');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -71,15 +79,17 @@ export function AdminDashboardPage({ onClose }: Props) {
     }
   }, []);
 
- useEffect(() => {
-  loadData();
+  useEffect(() => {
+    loadData();
+  }, [loadData, revision]);
 
-  if (tab !== "dashboard") return;
+  useEffect(() => {
+    if (tab === 'dashboard') loadData();
+  }, [loadData, tab]);
 
-  const interval = setInterval(loadData, 5000);
-
-  return () => clearInterval(interval);
-}, [loadData, tab]);
+  useEffect(() => {
+    localStorage.setItem('smhs_admin_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
 
 const handleModeSwitch = async (newMode: "demo" | "live") => {
   if (newMode === mode) return;
@@ -122,27 +132,94 @@ const confirmLiveSwitch = async () => {
   ];
 
   const statusColors: Record<string, string> = { LIVE: '#22C55E', UPCOMING: '#71717A', PAUSED: '#FBBF24', CLOSED: '#EF4444', ARCHIVED: '#52525B', RESULTS_PUBLISHED: '#22D3EE' };
-  const statusLabel = election?.status || 'UPCOMING';
+  const statusLabel = election?.status;
+
+  const openStartNewElection = () => {
+    if (!election) return;
+    const baseline = { name: election.name, year: election.year };
+    setNewElectionBaseline(baseline);
+    setNewElectionName(baseline.name);
+    setNewElectionYear(String(new Date().getFullYear()));
+    setShowNewElectionModal(true);
+  };
+
+  const confirmStartNewElection = async () => {
+    if (!newElectionBaseline) return;
+
+    const nameTrimmed = newElectionName.trim();
+    const parsedYear = Number.parseInt(newElectionYear, 10);
+
+    if (nameTrimmed.length === 0) return;
+    if (!Number.isFinite(parsedYear)) return;
+
+    const patch: { name?: string; year?: number } = {};
+    if (nameTrimmed !== newElectionBaseline.name.trim()) patch.name = nameTrimmed;
+    if (parsedYear !== newElectionBaseline.year) patch.year = parsedYear;
+
+    setStartingNewElection(true);
+    try {
+      await electionService.startNewElection(patch);
+      setShowNewElectionModal(false);
+      await loadData();
+    } finally {
+      setStartingNewElection(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex" style={{ background: '#09090B' }}>
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 flex flex-col h-full border-r"
-        style={{ background: 'rgba(17,24,39,0.95)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(20px)' }}>
+      <motion.aside
+        animate={{ width: sidebarCollapsed ? 84 : 256 }}
+        transition={{ duration: 0.25 }}
+        className="flex-shrink-0 flex flex-col h-full border-r"
+        style={{ background: 'rgba(17,24,39,0.95)', borderColor: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(20px)' }}
+      >
         {/* Logo */}
         <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #7C3AED, #A855F7)' }}>
-              <Zap size={14} className="text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #7C3AED, #A855F7)' }}>
+                <Zap size={14} className="text-white" />
+              </div>
+              <div
+                className="min-w-0"
+                style={{
+                  opacity: sidebarCollapsed ? 0 : 1,
+                  width: sidebarCollapsed ? 0 : 'auto',
+                  overflow: 'hidden',
+                  transition: 'opacity 200ms ease, width 200ms ease',
+                }}>
+                <div className="font-bold text-white text-sm truncate">Pulse by SMHS</div>
+                <div className="text-xs" style={{ color: '#52525B' }}>Admin Console</div>
+              </div>
             </div>
-            <div>
-              <div className="font-bold text-white text-sm">Pulse by SMHS</div>
-              <div className="text-xs" style={{ color: '#52525B' }}>Admin Console</div>
-            </div>
+            <button
+              onClick={() => setSidebarCollapsed(v => !v)}
+              className="p-2 rounded-xl transition-colors"
+              style={{ background: 'rgba(255,255,255,0.05)', color: '#71717A' }}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={sidebarCollapsed ? 'Expand' : 'Collapse'}
+            >
+              <ChevronRight
+                size={16}
+                style={{
+                  transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)',
+                  transition: 'transform 200ms ease',
+                }}
+              />
+            </button>
           </div>
           {/* Mode badge */}
-          <div className="flex gap-2">
+          <div
+            className="flex gap-2"
+            style={{
+              opacity: sidebarCollapsed ? 0 : 1,
+              height: sidebarCollapsed ? 0 : 'auto',
+              overflow: 'hidden',
+              transition: 'opacity 200ms ease, height 200ms ease',
+            }}>
             {(['demo', 'live'] as const).map(m => (
               <button key={m} onClick={() => handleModeSwitch(m)}
                 className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
@@ -159,12 +236,28 @@ const confirmLiveSwitch = async () => {
 
         {/* Election status */}
         {election && (
-          <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div
+            className="px-4 py-3 border-b"
+            style={{
+              borderColor: 'rgba(255,255,255,0.06)',
+              opacity: sidebarCollapsed ? 0 : 1,
+              height: sidebarCollapsed ? 0 : 'auto',
+              overflow: 'hidden',
+              transition: 'opacity 200ms ease, height 200ms ease',
+            }}>
             <div className="text-xs mb-1" style={{ color: '#52525B' }}>Active Election</div>
             <div className="text-sm font-semibold text-white truncate">{election.name} {election.year}</div>
             <div className="flex items-center gap-2 mt-1">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusColors[statusLabel] }} />
-              <span className="text-xs font-medium" style={{ color: statusColors[statusLabel] }}>{statusLabel}</span>
+              {statusLabel && statusColors[statusLabel] ? (
+                <>
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusColors[statusLabel] }} />
+                  <span className="text-xs font-medium" style={{ color: statusColors[statusLabel] }}>{statusLabel}</span>
+                </>
+              ) : statusLabel ? (
+                <span className="text-xs font-medium" style={{ color: '#EF4444' }}>INVALID STATUS</span>
+              ) : (
+                <span className="text-xs font-medium" style={{ color: '#EF4444' }}>MISSING STATUS</span>
+              )}
             </div>
           </div>
         )}
@@ -173,14 +266,25 @@ const confirmLiveSwitch = async () => {
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {navItems.map(item => (
             <button key={item.id} onClick={() => setTab(item.id)}
+              title={sidebarCollapsed ? item.label : undefined}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left focus:outline-none focus:ring-1 focus:ring-purple-500"
               style={{
                 background: tab === item.id ? 'rgba(124,58,237,0.15)' : 'transparent',
                 color: tab === item.id ? '#A855F7' : '#71717A',
                 border: tab === item.id ? '1px solid rgba(124,58,237,0.2)' : '1px solid transparent',
+                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               }}>
               {item.icon}
-              {item.label}
+              <span
+                style={{
+                  opacity: sidebarCollapsed ? 0 : 1,
+                  width: sidebarCollapsed ? 0 : 'auto',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  transition: 'opacity 200ms ease, width 200ms ease',
+                }}>
+                {item.label}
+              </span>
             </button>
           ))}
         </nav>
@@ -188,14 +292,26 @@ const confirmLiveSwitch = async () => {
         {/* Footer */}
         <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <button onClick={() => { logout(); onClose(); }}
+            title={sidebarCollapsed ? 'Logout' : undefined}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors"
             style={{ color: '#71717A' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#71717A')}>
-            <LogOut size={15} /> Logout
+            onMouseLeave={e => (e.currentTarget.style.color = '#71717A')}
+          >
+            <LogOut size={15} />
+            <span
+              style={{
+                opacity: sidebarCollapsed ? 0 : 1,
+                width: sidebarCollapsed ? 0 : 'auto',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                transition: 'opacity 200ms ease, width 200ms ease',
+              }}>
+              Logout
+            </span>
           </button>
         </div>
-      </aside>
+      </motion.aside>
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
@@ -235,15 +351,33 @@ const confirmLiveSwitch = async () => {
                   </>
                 )}
                 {election?.status === 'PAUSED' && (
-                  <button onClick={() => handleStatusChange('LIVE')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
-                    <Play size={14} /> Resume
-                  </button>
+                  <>
+                    <button onClick={() => handleStatusChange('LIVE')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                      <Play size={14} /> Resume
+                    </button>
+                    <button onClick={() => handleStatusChange('CLOSED')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
+                      <Square size={14} /> End Election
+                    </button>
+                  </>
                 )}
                 {election?.status === 'CLOSED' && (
-                  <button onClick={() => handleStatusChange('RESULTS_PUBLISHED')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-                    style={{ background: 'rgba(34,211,238,0.15)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}>
-                    <TrendingUp size={14} /> Publish Results
+                  <>
+                    <button onClick={openStartNewElection} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                      <Play size={14} /> Start New Election
+                    </button>
+                    <button onClick={() => handleStatusChange('RESULTS_PUBLISHED')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(34,211,238,0.15)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}>
+                      <TrendingUp size={14} /> Publish Results
+                    </button>
+                  </>
+                )}
+                {election?.status === 'RESULTS_PUBLISHED' && (
+                  <button onClick={openStartNewElection} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <Play size={14} /> Start New Election
                   </button>
                 )}
               </div>
@@ -368,6 +502,57 @@ const confirmLiveSwitch = async () => {
           </motion.div>
         </div>
       )}
+
+      <AnimatePresence>
+        {showNewElectionModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="glass-elevated rounded-3xl p-8 w-full max-w-md" role="dialog" aria-modal="true">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-bold text-white">Start New Election</h2>
+                <button onClick={() => setShowNewElectionModal(false)} style={{ color: '#71717A' }} aria-label="Close"><X size={18} /></button>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>Election Name</label>
+                  <input
+                    value={newElectionName}
+                    onChange={e => setNewElectionName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>Election Year</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={newElectionYear}
+                    onChange={e => setNewElectionYear(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setShowNewElectionModal(false)} disabled={startingNewElection} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#A1A1AA', opacity: startingNewElection ? 0.6 : 1 }}>
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmStartNewElection}
+                  disabled={startingNewElection || newElectionName.trim().length === 0 || !Number.isFinite(Number.parseInt(newElectionYear, 10))}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #22C55E, #16A34A)', opacity: startingNewElection ? 0.85 : 1 }}>
+                  {startingNewElection ? <><Loader2 size={15} className="animate-spin" />Starting...</> : <><Play size={15} />Start Election</>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

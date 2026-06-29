@@ -21,29 +21,6 @@ export function generateSessionId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
-export function hasDeviceVoted(): boolean {
-  const deviceHash = generateDeviceHash();
-  const voted = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEVICE_VOTES) || '[]') as string[];
-  return voted.includes(deviceHash);
-}
-
-export function markDeviceAsVoted(): void {
-  const deviceHash = generateDeviceHash();
-  const voted = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEVICE_VOTES) || '[]') as string[];
-  if (!voted.includes(deviceHash)) {
-    voted.push(deviceHash);
-    localStorage.setItem(STORAGE_KEYS.DEVICE_VOTES, JSON.stringify(voted));
-  }
-}
-
-export function hasSessionVoted(): boolean {
-  return sessionStorage.getItem('vote_submitted') === 'true';
-}
-
-export function markSessionAsVoted(): void {
-  sessionStorage.setItem('vote_submitted', 'true');
-}
-
 export function logAttemptLocally(data: Omit<AttemptLog, 'id'>): void {
   const logs = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_ATTEMPTS) || '[]') as AttemptLog[];
   logs.unshift({ ...data, id: Math.random().toString(36).substring(2) });

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
 import { ModeProvider } from './context/ModeContext';
+import { RefreshProvider } from './context/RefreshContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PageShell } from './components/layout/PageShell';
 import { LandingPage } from './pages/public/LandingPage';
@@ -11,8 +12,8 @@ import { ReviewPage } from './pages/public/ReviewPage';
 import { SuccessPage } from './pages/public/SuccessPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
-import { hasSessionVoted } from './services/securityService';
 import type { VotingCode } from './types';
+import { electionService } from "./services/electionService";
 
 type PublicPage = 'landing' | 'code-entry' | 'ballot' | 'review' | 'success';
 
@@ -24,17 +25,21 @@ function AppContent() {
   const [validatedCode, setValidatedCode] = useState<VotingCode | null>(null);
   const [ballotSelections, setBallotSelections] = useState<Record<string, string>>({});
 
-  // Redirect to success if session already voted
-  useEffect(() => {
-    if (hasSessionVoted()) {
-      setPublicPage('success');
-    }
-  }, []);
+// Initialize election data
+useEffect(() => {
+  async function initialize() {
+    await electionService.getElection();
+    await electionService.getCandidates();
+    await electionService.getAllCodes();
+  }
 
-  const handleCodeValidated = (code: VotingCode) => {
-    setValidatedCode(code);
-    setPublicPage('ballot');
-  };
+  initialize().catch(() => {});
+}, []);
+
+const handleCodeValidated = (code: VotingCode) => {
+  setValidatedCode(code);
+  setPublicPage("ballot");
+};
 
   const handleBallotReview = (selections: Record<string, string>) => {
     setBallotSelections(selections);
@@ -94,7 +99,6 @@ function AppContent() {
   <SuccessPage
     key="success"
     onDone={() => {
-      sessionStorage.removeItem('vote_submitted');
       setValidatedCode(null);
       setBallotSelections({});
       setPublicPage('landing');
@@ -122,7 +126,9 @@ export default function App() {
   return (
     <ModeProvider>
       <AuthProvider>
-        <AppContent />
+        <RefreshProvider>
+          <AppContent />
+        </RefreshProvider>
       </AuthProvider>
     </ModeProvider>
   );

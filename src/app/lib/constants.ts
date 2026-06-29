@@ -46,6 +46,16 @@ export const ELECTION_ROLES = [
   'Deputy Cultural Secretary',
   'Discipline Secretary',
   'Deputy Discipline Secretary',
+  'Literary Captain',
+  'Deputy Literary Captain',
+  'Pragathi House Captain',
+  'Deputy Pragathi House Captain',
+  'Sakthi House Captain',
+  'Deputy Sakthi House Captain',
+  'Shanthi House Captain',
+  'Deputy Shanthi House Captain',
+  'Jothi House Captain',
+  'Deputy Jothi House Captain',
 ] as const;
 
 export const ELIGIBILITY_RULES: Record<string, string> = {
@@ -59,6 +69,16 @@ export const ELIGIBILITY_RULES: Record<string, string> = {
   'Deputy Cultural Secretary': 'Class 9 candidates only',
   'Discipline Secretary': 'Class 10 candidates only',
   'Deputy Discipline Secretary': 'Class 9 candidates only',
+  'Literary Captain': 'Class 10 candidates only',
+  'Deputy Literary Captain': 'Class 9 candidates only',
+  'Pragathi House Captain': 'Class 10 candidates only',
+  'Deputy Pragathi House Captain': 'Class 9 candidates only',
+  'Sakthi House Captain': 'Class 10 candidates only',
+  'Deputy Sakthi House Captain': 'Class 9 candidates only',
+  'Shanthi House Captain': 'Class 10 candidates only',
+  'Deputy Shanthi House Captain': 'Class 9 candidates only',
+  'Jothi House Captain': 'Class 10 candidates only',
+  'Deputy Jothi House Captain': 'Class 9 candidates only',
 };
 
 export const SECTIONS = ['A', 'B', 'C', 'D', 'E'] as const;

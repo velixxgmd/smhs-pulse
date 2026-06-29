@@ -3,12 +3,16 @@ import { DEMO_CANDIDATES, generateDemoCodes, DEMO_ELECTION } from '../data/demoD
 import type {
   Candidate, VotingCode, AttemptLog, TurnoutData, Election,
   CodeValidationResult, VotePayload, VoteResult, ElectionResults,
-  BatchConfig, ElectionStatus
+  BatchConfig, ElectionStatus, VotingLayout
 } from '../types';
 import {
-  generateDeviceHash, hasDeviceVoted, markDeviceAsVoted,
-  hasSessionVoted, markSessionAsVoted, logAttemptLocally, getLocalAttempts, clearLocalAttempts
-} from './securityService';
+  generateDeviceHash,
+  logAttemptLocally,
+  getLocalAttempts,
+  clearLocalAttempts
+} from "./securityService";
+
+const DEMO_REVISION_KEY = 'smhs_demo_revision';
 
 function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -17,18 +21,31 @@ function generateCode(): string {
   return `${p1}-${p2}`;
 }
 
+function getRevision(): string {
+  return localStorage.getItem(DEMO_REVISION_KEY) || '0';
+}
+
+function bumpRevision(): void {
+  localStorage.setItem(DEMO_REVISION_KEY, Date.now().toString());
+}
+
 function getCodes(): VotingCode[] {
   const stored = localStorage.getItem(STORAGE_KEYS.DEMO_CODES);
   if (!stored) {
     const codes = generateDemoCodes();
     localStorage.setItem(STORAGE_KEYS.DEMO_CODES, JSON.stringify(codes));
+    bumpRevision();
     return codes;
   }
   return JSON.parse(stored);
 }
 
 function saveCodes(codes: VotingCode[]): void {
-  localStorage.setItem(STORAGE_KEYS.DEMO_CODES, JSON.stringify(codes));
+    localStorage.setItem(
+        STORAGE_KEYS.DEMO_CODES,
+        JSON.stringify(codes)
+    );
+    bumpRevision();
 }
 
 function getCandidates(): Candidate[] {
@@ -42,6 +59,7 @@ function getCandidates(): Candidate[] {
 
 function saveCandidates(candidates: Candidate[]): void {
   localStorage.setItem('smhs_demo_candidates', JSON.stringify(candidates));
+  bumpRevision();
 }
 
 function getVotes(): Array<VotePayload & { id: string; voted_at: string }> {
@@ -63,6 +81,7 @@ function getElection(): Election {
 
 function saveElection(e: Election): void {
   localStorage.setItem(STORAGE_KEYS.DEMO_ELECTION, JSON.stringify(e));
+  bumpRevision();
 }
 
 function getAdminConfig() {
@@ -76,17 +95,13 @@ function getAdminConfig() {
 }
 
 export const DemoElectionService = {
+  async getRevision(): Promise<string> {
+    return getRevision();
+  },
+
   async validateCode(code: string): Promise<CodeValidationResult> {
+      const codes = getCodes();
     await new Promise(r => setTimeout(r, 400));
-    if (hasSessionVoted()) {
-      logAttemptLocally({ code, time: new Date().toISOString(), reason: 'SESSION_REPLAY', device_hash: generateDeviceHash() });
-      return { valid: false, error: 'Vote already submitted in this session.' };
-    }
-    if (hasDeviceVoted()) {
-      logAttemptLocally({ code, time: new Date().toISOString(), reason: 'DUPLICATE_DEVICE', device_hash: generateDeviceHash() });
-      return { valid: false, error: 'A vote has already been submitted from this device.' };
-    }
-    const codes = getCodes();
     const found = codes.find(c => c.code.toUpperCase() === code.toUpperCase());
     if (!found) {
       logAttemptLocally({ code, time: new Date().toISOString(), reason: 'INVALID', device_hash: generateDeviceHash() });
@@ -120,9 +135,6 @@ export const DemoElectionService = {
     const votes = getVotes();
     votes.push({ ...data, id: Math.random().toString(36).substring(2), voted_at: new Date().toISOString() });
     saveVotes(votes);
-
-    markDeviceAsVoted();
-    markSessionAsVoted();
     return { success: true };
   },
 
@@ -251,9 +263,43 @@ export const DemoElectionService = {
     return getElection();
   },
 
-  async updateElectionStatus(status: ElectionStatus): Promise<void> {
-    const election = getElection();
+  async updateElectionStatus(
+  status?: ElectionStatus,
+  mode?: "demo" | "live"
+): Promise<void> {
+
+  const election = getElection();
+
+  if (status) {
     election.status = status;
+  }
+
+  if (mode) {
+    election.mode = mode;
+  }
+
+  saveElection(election);
+},
+
+  async updateVotingLayout(layout: VotingLayout): Promise<void> {
+    const election = getElection();
+    election.voting_layout = layout;
+    saveElection(election);
+  },
+
+  async startNewElection(patch: { name?: string; year?: number }): Promise<void> {
+    const election = getElection();
+    election.status = "LIVE";
+
+    if (typeof patch.name === "string") {
+      const nextName = patch.name.trim();
+      if (nextName.length > 0) election.name = nextName;
+    }
+
+    if (typeof patch.year === "number" && Number.isFinite(patch.year)) {
+      election.year = patch.year;
+    }
+
     saveElection(election);
   },
 
@@ -268,6 +314,7 @@ export const DemoElectionService = {
     if (cfg.password !== oldPass) return { success: false, error: 'Current password is incorrect.' };
     cfg.password = newPass;
     localStorage.setItem(STORAGE_KEYS.DEMO_ADMIN, JSON.stringify(cfg));
+    bumpRevision();
     return { success: true };
   },
 
@@ -282,6 +329,7 @@ export const DemoElectionService = {
     const cfg = getAdminConfig();
     cfg.password = newPass;
     localStorage.setItem(STORAGE_KEYS.DEMO_ADMIN, JSON.stringify(cfg));
+    bumpRevision();
     return { success: true };
   },
 
@@ -303,23 +351,23 @@ export const DemoElectionService = {
     clearLocalAttempts();
   },
 
-  async fullReset(): Promise<void> {
-    await this.resetVotes();
-    await this.clearAttemptLogs();
-    const election = getElection();
-    election.status = 'UPCOMING';
-    saveElection(election);
-  },
-
   async restoreDemoData(): Promise<void> {
     localStorage.removeItem(STORAGE_KEYS.DEMO_CODES);
     localStorage.removeItem(STORAGE_KEYS.DEMO_VOTES);
     localStorage.removeItem(STORAGE_KEYS.DEMO_ATTEMPTS);
     localStorage.removeItem(STORAGE_KEYS.DEVICE_VOTES);
-    localStorage.removeItem('smhs_demo_candidates');
+    localStorage.removeItem("smhs_demo_candidates");
     localStorage.removeItem(STORAGE_KEYS.DEMO_ELECTION);
-    sessionStorage.removeItem('vote_submitted');
-  },
+    sessionStorage.removeItem("vote_submitted");
+
+    localStorage.setItem(
+        STORAGE_KEYS.DEMO_ELECTION,
+        JSON.stringify(DEMO_ELECTION)
+    );
+
+    saveCandidates(DEMO_CANDIDATES);
+    saveCodes(generateDemoCodes());
+},
 
   async getTotalStats() {
     const codes = getCodes();

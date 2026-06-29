@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Eye, EyeOff, Save, Loader2, CheckCircle2, AlertCircle, Monitor, Smartphone } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useMode } from '../../context/ModeContext';
+import { useRefresh } from '../../context/RefreshContext';
 import { toast } from 'sonner';
-import type { GraphicsQuality, DeviceMode } from '../../types';
+import type { GraphicsQuality, DeviceMode, VotingLayout } from '../../types';
 
 export function AdminSettingsPage() {
   const { graphicsQuality, setGraphicsQuality, deviceMode, setDeviceMode } = useMode();
+  const { revision } = useRefresh();
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -14,6 +16,17 @@ export function AdminSettingsPage() {
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [passError, setPassError] = useState('');
+  const [votingLayout, setVotingLayout] = useState<VotingLayout>('multi');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const e = await electionService.getElection();
+        setVotingLayout(e.voting_layout === 'single' ? 'single' : 'multi');
+      } catch {
+      }
+    })();
+  }, [revision]);
 
   const handleChangePassword = async () => {
     if (!oldPass || !newPass) { setPassError('All fields are required.'); return; }
@@ -117,6 +130,38 @@ export function AdminSettingsPage() {
               }}>
               <div style={{ color: deviceMode === opt.value ? '#A855F7' : '#71717A' }} className="mb-2">{opt.icon}</div>
               <div className="text-sm font-semibold" style={{ color: deviceMode === opt.value ? '#A855F7' : '#A1A1AA' }}>{opt.label}</div>
+              <div className="text-xs mt-0.5" style={{ color: '#52525B' }}>{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Voting layout */}
+      <div className="glass rounded-2xl p-6 mt-6">
+        <h2 className="text-base font-semibold text-white mb-2">Voting Layout</h2>
+        <p className="text-sm mb-5" style={{ color: '#71717A' }}>Choose how the ballot is displayed to voters. Updates automatically across open tabs.</p>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            { value: 'multi' as VotingLayout, label: 'Multi Step', desc: 'Current ballot experience (recommended)' },
+            { value: 'single' as VotingLayout, label: 'Single Page', desc: 'All positions displayed on one page' },
+          ]).map(opt => (
+            <button
+              key={opt.value}
+              onClick={async () => {
+                setVotingLayout(opt.value);
+                try {
+                  await electionService.updateVotingLayout(opt.value);
+                  toast.success('Voting layout updated.');
+                } catch (e) {
+                  toast.error(`Update failed: ${e}`);
+                }
+              }}
+              className="p-4 rounded-xl text-left transition-all"
+              style={{
+                background: votingLayout === opt.value ? 'rgba(34,211,238,0.12)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${votingLayout === opt.value ? 'rgba(34,211,238,0.25)' : 'rgba(255,255,255,0.06)'}`,
+              }}>
+              <div className="text-sm font-semibold" style={{ color: votingLayout === opt.value ? '#22D3EE' : '#A1A1AA' }}>{opt.label}</div>
               <div className="text-xs mt-0.5" style={{ color: '#52525B' }}>{opt.desc}</div>
             </button>
           ))}

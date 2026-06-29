@@ -13,6 +13,16 @@ export const DEMO_CANDIDATES: Candidate[] = [
   { id: 'c10', name: 'Riya Patel', class: '9', section: 'B', role: 'Deputy Head Girl', photo_url: '', manifesto: 'A bridge between teachers and students, working for a harmonious school.', votes: 0, order_index: 1 },
   { id: 'c11', name: 'Nikhil Joshi', class: '10', section: 'D', role: 'Discipline Secretary', photo_url: '', manifesto: 'Ensuring a safe, respectful, and orderly environment for all students.', votes: 0, order_index: 1 },
   { id: 'c12', name: 'Meera Gupta', class: '10', section: 'A', role: 'Cultural Secretary', photo_url: '', manifesto: 'Celebrating the rich diversity of SMHS through vibrant cultural events.', votes: 0, order_index: 1 },
+  { id: 'c13', name: 'Aarav Menon', class: '10', section: 'B', role: 'Literary Captain', photo_url: '', manifesto: 'Promoting reading culture, debates, and creative writing across the school.', votes: 0, order_index: 1 },
+  { id: 'c14', name: 'Diya Nair', class: '9', section: 'C', role: 'Deputy Literary Captain', photo_url: '', manifesto: 'Supporting literary events and helping juniors participate with confidence.', votes: 0, order_index: 1 },
+  { id: 'c15', name: 'Siddharth Rao', class: '10', section: 'A', role: 'Pragathi House Captain', photo_url: '', manifesto: 'Strengthening teamwork and house spirit through consistent participation.', votes: 0, order_index: 1 },
+  { id: 'c16', name: 'Ishita Das', class: '9', section: 'B', role: 'Deputy Pragathi House Captain', photo_url: '', manifesto: 'Helping organize house activities and ensuring everyone gets a chance.', votes: 0, order_index: 1 },
+  { id: 'c17', name: 'Neeraj Kumar', class: '10', section: 'C', role: 'Sakthi House Captain', photo_url: '', manifesto: 'Leading with discipline and motivation to bring out the best in Sakthi House.', votes: 0, order_index: 1 },
+  { id: 'c18', name: 'Kavya S', class: '9', section: 'A', role: 'Deputy Sakthi House Captain', photo_url: '', manifesto: 'Coordinating events and supporting house members throughout the year.', votes: 0, order_index: 1 },
+  { id: 'c19', name: 'Rahul Thomas', class: '10', section: 'D', role: 'Shanthi House Captain', photo_url: '', manifesto: 'Encouraging fair play, respect, and unity within Shanthi House.', votes: 0, order_index: 1 },
+  { id: 'c20', name: 'Anika Jain', class: '9', section: 'C', role: 'Deputy Shanthi House Captain', photo_url: '', manifesto: 'Supporting coordination and helping students stay engaged in house programs.', votes: 0, order_index: 1 },
+  { id: 'c21', name: 'Vivek Iyer', class: '10', section: 'B', role: 'Jothi House Captain', photo_url: '', manifesto: 'Building confidence and participation for every member of Jothi House.', votes: 0, order_index: 1 },
+  { id: 'c22', name: 'Sahana R', class: '9', section: 'B', role: 'Deputy Jothi House Captain', photo_url: '', manifesto: 'Helping manage house events smoothly and representing juniors fairly.', votes: 0, order_index: 1 },
 ];
 
 function generateBatchId(): string {
@@ -78,11 +88,16 @@ export const DEMO_TURNOUT: TurnoutData[] = [
 ];
 
 export const DEMO_ELECTION: Election = {
-  id: 'demo-election-1',
-  name: 'Student Council Election',
+  id: "demo-election-1",
+  name: "Student Council Election",
   year: 2026,
-  status: 'LIVE',
+
+  status: "UPCOMING",
+  mode: "demo",
+  voting_layout: "multi",
+
   created_at: new Date().toISOString(),
-  total_votes: 364,
-  turnout_percent: 76,
+
+  total_votes: 0,
+  turnout_percent: 0,
 };

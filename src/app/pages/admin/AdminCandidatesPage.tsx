@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Edit2, Trash2, X, Save, Loader2, User, AlertCircle } from 'lucide-react';
 import { electionService } from '../../services/electionService';
+import { useRefresh } from '../../context/RefreshContext';
 import type { Candidate } from '../../types';
 import { ELECTION_ROLES, ELIGIBILITY_RULES } from '../../lib/constants';
 
@@ -11,6 +12,7 @@ const emptyForm: Omit<Candidate, 'id' | 'votes'> = {
 };
 
 export function AdminCandidatesPage() {
+  const { revision } = useRefresh();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -20,6 +22,17 @@ export function AdminCandidatesPage() {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filterRole, setFilterRole] = useState<string>('all');
+  const textFields: Array<{
+    label: string;
+    key: 'name' | 'photo_url' | 'manifesto' | 'eligibility_notes';
+    placeholder: string;
+    multiline?: boolean;
+  }> = [
+    { label: 'Full Name', key: 'name', placeholder: 'Student full name' },
+    { label: 'Photo URL', key: 'photo_url', placeholder: 'https://...' },
+    { label: 'Manifesto', key: 'manifesto', placeholder: 'Short campaign statement', multiline: true },
+    { label: 'Eligibility Notes', key: 'eligibility_notes', placeholder: 'Optional notes' },
+  ];
 
   const load = async () => {
     setLoading(true);
@@ -27,7 +40,7 @@ export function AdminCandidatesPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [revision]);
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setError(''); setShowForm(true); };
   const openEdit = (c: Candidate) => {
@@ -161,21 +174,16 @@ export function AdminCandidatesPage() {
               </div>
 
               <div className="space-y-4">
-                {[
-                  { label: 'Full Name', key: 'name', placeholder: 'Student full name' },
-                  { label: 'Photo URL', key: 'photo_url', placeholder: 'https://...' },
-                  { label: 'Manifesto', key: 'manifesto', placeholder: 'Short campaign statement', multiline: true },
-                  { label: 'Eligibility Notes', key: 'eligibility_notes', placeholder: 'Optional notes' },
-                ].map(field => (
+                {textFields.map(field => (
                   <div key={field.key}>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>{field.label}</label>
                     {field.multiline ? (
-                      <textarea value={(form as Record<string, string>)[field.key]} onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
+                      <textarea value={form[field.key]} onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
                         placeholder={field.placeholder} rows={3}
                         className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none resize-none"
                         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
                     ) : (
-                      <input type="text" value={(form as Record<string, string>)[field.key]} onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
+                      <input type="text" value={form[field.key]} onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
                         placeholder={field.placeholder}
                         className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none"
                         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />

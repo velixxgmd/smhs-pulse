@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Shield, Loader2, AlertCircle } from 'lucide-react';
 import { electionService } from '../../services/electionService';
+import { useRefresh } from '../../context/RefreshContext';
 import type { VotingCode } from '../../types';
 
 interface Props {
@@ -10,10 +11,22 @@ interface Props {
 }
 
 export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
+  const { revision } = useRefresh();
   const [parts, setParts] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [electionStatus, setElectionStatus] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const e = await electionService.getElection();
+        setElectionStatus(e.status);
+      } catch {
+      }
+    })();
+  }, [revision]);
 
   const getFullCode = () => {
     const combined = parts.join('').toUpperCase();
@@ -46,6 +59,15 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
   };
 
   const handleSubmit = async () => {
+    if (electionStatus && electionStatus !== 'LIVE') {
+      const msg =
+        electionStatus === 'UPCOMING' ? 'Voting has not started yet.' :
+        electionStatus === 'PAUSED' ? 'Voting is temporarily paused. Please wait for it to resume.' :
+        'Voting is currently closed.';
+      setError(msg);
+      return;
+    }
+
     const code = getFullCode();
     if (parts.filter(Boolean).length < 6) {
       setError('Please enter your complete 6-character voting code.');
@@ -58,10 +80,8 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
       if (result.valid && result.code) {
         onCodeValidated(result.code);
       } else {
-        setError(result.error || 'Invalid code. Please try again.');
+        setError(result.error || "Invalid code. Please try again.");
       }
-    } catch (e) {
-      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }

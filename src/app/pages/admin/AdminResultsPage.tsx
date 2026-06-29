@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Trophy, Lock, Loader2, User, Crown } from 'lucide-react';
 import { electionService } from '../../services/electionService';
+import { useRefresh } from '../../context/RefreshContext';
 import type { ElectionResults, Election } from '../../types';
+import { ELECTION_ROLES } from '../../lib/constants';
 
 export function AdminResultsPage() {
+  const { revision } = useRefresh();
   const [results, setResults] = useState<ElectionResults | null>(null);
   const [election, setElection] = useState<Election | null>(null);
   const [loading, setLoading] = useState(true);
@@ -17,11 +20,21 @@ export function AdminResultsPage() {
         setResults(r); setElection(e);
       } finally { setLoading(false); }
     })();
-  }, []);
+  }, [revision]);
 
   if (loading) return <div className="flex items-center justify-center h-full py-24"><Loader2 size={32} className="animate-spin" style={{ color: '#7C3AED' }} /></div>;
 
   const isLive = election?.status === 'LIVE' || election?.status === 'UPCOMING' || election?.status === 'PAUSED';
+  const roleOrder = new Map<string, number>(ELECTION_ROLES.map((r, i) => [r, i]));
+  const orderedResults = results
+    ? [...results.results].sort((a, b) => {
+        const ai = roleOrder.get(a.role);
+        const bi = roleOrder.get(b.role);
+        const aKey = ai ?? Number.MAX_SAFE_INTEGER;
+        const bKey = bi ?? Number.MAX_SAFE_INTEGER;
+        return aKey - bKey;
+      })
+    : [];
 
   return (
     <div className="p-8">
@@ -59,7 +72,7 @@ export function AdminResultsPage() {
 
           {/* Results per role */}
           <div className="space-y-5">
-            {results.results.map((roleResult, i) => (
+            {orderedResults.map((roleResult, i) => (
               <motion.div key={roleResult.role} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
                 className="glass rounded-2xl overflow-hidden">
                 <div className="px-6 py-4 border-b flex items-center gap-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>

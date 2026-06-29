@@ -1,14 +1,10 @@
 import { SERVER_BASE } from '../lib/constants';
-import { publicAnonKey } from '/utils/supabase/info';
+import { publicAnonKey } from '../../../utils/supabase/info';
 import type {
   Candidate, VotingCode, AttemptLog, TurnoutData, Election,
   CodeValidationResult, VotePayload, VoteResult, ElectionResults,
-  BatchConfig, ElectionStatus
+  BatchConfig, ElectionStatus, VotingLayout
 } from '../types';
-import {
-  hasSessionVoted,
-  markSessionAsVoted
-} from './securityService';
 
 const headers = () => ({
   'Content-Type': 'application/json',
@@ -25,25 +21,41 @@ async function api(path: string, opts?: RequestInit) {
 }
 
 export const LiveElectionService = {
-  async validateCode(code: string): Promise<CodeValidationResult> {
-    if (hasSessionVoted()) return { valid: false, error: 'Vote already submitted in this session.' };
-    try {
-      const data = await api(`/validate-code`, { method: 'POST', body: JSON.stringify({ code }) });
-      return data;
-    } catch (e) {
-      return { valid: false, error: `Network error: ${e}` };
-    }
+  async getRevision(): Promise<string> {
+    const data = await api(`/revision`);
+    if (data && typeof data.revision === 'string') return data.revision;
+    return '0';
   },
 
-  async submitVote(payload: VotePayload): Promise<VoteResult> {
+  async validateCode(code: string): Promise<CodeValidationResult> {
     try {
-      const data = await api(`/submit-vote`, { method: 'POST', body: JSON.stringify(payload) });
-      if (data.success) { markSessionAsVoted(); }
-      return data;
+        return await api("/validate-code", {
+            method: "POST",
+            body: JSON.stringify({ code })
+        });
     } catch (e) {
-      return { success: false, error: `Network error: ${e}` };
+        return {
+            valid: false,
+            error: `Network error: ${e}`
+        };
     }
-  },
+},
+
+async submitVote(payload: VotePayload): Promise<VoteResult> {
+    try {
+        const data = await api("/submit-vote", {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+
+        return data;
+    } catch (e) {
+        return {
+            success: false,
+            error: `Network error: ${e}`
+        };
+    }
+},
 
   async getCandidates(role?: string): Promise<Candidate[]> {
     const params = role ? `?role=${encodeURIComponent(role)}` : '';
@@ -94,7 +106,7 @@ export const LiveElectionService = {
 
   async getAllCodes(): Promise<VotingCode[]> {
     return api(`/codes`);
-  },
+},
 
   async getElection(): Promise<Election> {
     return api(`/election`);
@@ -114,6 +126,23 @@ export const LiveElectionService = {
     });
 
 },
+
+  async updateVotingLayout(layout: VotingLayout): Promise<void> {
+    await api(`/election/status`, {
+      method: "PUT",
+      body: JSON.stringify({ voting_layout: layout }),
+    });
+  },
+
+  async startNewElection(patch: { name?: string; year?: number }): Promise<void> {
+    await api(`/election/status`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...patch,
+        status: "LIVE",
+      }),
+    });
+  },
 
   async verifyAdminPassword(password: string): Promise<boolean> {
     try {

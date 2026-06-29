@@ -4,6 +4,7 @@ import { Download, FileText, FileSpreadsheet, File, Loader2, CheckCircle2 } from
 import { electionService } from '../../services/electionService';
 import { exportCSV, exportTXT, exportXLSX, exportPDF, exportResultsPDF } from '../../services/exportService';
 import { toast } from 'sonner';
+import { ELECTION_ROLES } from '../../lib/constants';
 
 type ExportType = 'csv' | 'txt' | 'xlsx' | 'pdf-codes' | 'pdf-results';
 
@@ -27,7 +28,18 @@ export function AdminExportPage() {
         case 'pdf-codes': exportPDF(codes, name, year); break;
         case 'pdf-results': {
           const results = await electionService.getResults();
-          exportResultsPDF(results, name, year);
+          const roleOrder = new Map<string, number>(ELECTION_ROLES.map((r, i) => [r, i]));
+          const sortedResults = {
+            ...results,
+            results: [...results.results].sort((a, b) => {
+              const ai = roleOrder.get(a.role);
+              const bi = roleOrder.get(b.role);
+              const aKey = ai ?? Number.MAX_SAFE_INTEGER;
+              const bKey = bi ?? Number.MAX_SAFE_INTEGER;
+              return aKey - bKey;
+            }),
+          };
+          exportResultsPDF(sortedResults, name, year);
           break;
         }
       }

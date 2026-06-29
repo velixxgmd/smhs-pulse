@@ -1,16 +1,23 @@
-import { STORAGE_KEYS } from '../lib/constants';
 import { DemoElectionService } from './demoElectionService';
 import { LiveElectionService } from './liveElectionService';
 import type { ElectionMode } from '../types';
 
-function getMode(): ElectionMode {
-  return (localStorage.getItem(STORAGE_KEYS.MODE) as ElectionMode) || 'demo';
+let CURRENT_MODE: ElectionMode = "demo";
+
+export function setCurrentMode(mode: ElectionMode) {
+    CURRENT_MODE = mode;
+}
+
+function getMode() {
+    return CURRENT_MODE;
 }
 
 type ServiceType = typeof DemoElectionService;
 
 function getService(): ServiceType {
-  return getMode() === 'demo' ? DemoElectionService : (LiveElectionService as unknown as ServiceType);
+    return getMode() === "demo"
+        ? DemoElectionService
+        : (LiveElectionService as unknown as ServiceType);
 }
 
 export const electionService: ServiceType = new Proxy({} as ServiceType, {

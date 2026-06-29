@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Key, Search, Loader2, CheckCircle, XCircle, Plus, X } from 'lucide-react';
 import { electionService } from '../../services/electionService';
+import { useRefresh } from '../../context/RefreshContext';
 import type { VotingCode } from '../../types';
 import { toast } from 'sonner';
 
 export function AdminCodesPage() {
+  const { revision } = useRefresh();
   const [codes, setCodes] = useState<VotingCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -24,7 +26,7 @@ export function AdminCodesPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [revision]);
 
   const handleGenerate = async () => {
     if (!genForm.max_roll || genForm.max_roll < 1) return;
