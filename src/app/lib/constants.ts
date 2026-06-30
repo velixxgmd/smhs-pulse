@@ -83,4 +83,11 @@ export const ELIGIBILITY_RULES: Record<string, string> = {
 
 export const SECTIONS = ['A', 'B', 'C', 'D', 'E'] as const;
 
+export const HOUSES = [
+  { name: 'Shakthi', color: '#EF4444', emoji: '🟥', altName: 'Sakthi' },
+  { name: 'Shanthi', color: '#3B82F6', emoji: '🟦' },
+  { name: 'Jothi', color: '#EAB308', emoji: '🟨' },
+  { name: 'Pragathi', color: '#22C55E', emoji: '🟩' },
+] as const;
+
 export const SERVER_BASE = `https://emxxkvjhmdimmpdzxyez.supabase.co/functions/v1/make-server-c9775fa5`;

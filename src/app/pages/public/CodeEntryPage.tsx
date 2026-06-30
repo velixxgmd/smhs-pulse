@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Shield, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Shield, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useRefresh } from '../../context/RefreshContext';
-import type { VotingCode } from '../../types';
+import { HOUSES } from '../../lib/constants';
+import type { VotingCode, House } from '../../types';
 
 interface Props {
   onBack: () => void;
-  onCodeValidated: (code: VotingCode) => void;
+  onCodeValidated: (code: VotingCode, selectedHouse: House) => void;
 }
 
 export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
@@ -16,6 +17,7 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [electionStatus, setElectionStatus] = useState<string | null>(null);
+  const [selectedHouse, setSelectedHouse] = useState<House | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -82,12 +84,16 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
       setError('Please enter your complete 4-character voting code.');
       return;
     }
+    if (!selectedHouse) {
+      setError('Please select your house before continuing.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
       const result = await electionService.validateCode(code);
       if (result.valid && result.code) {
-        onCodeValidated(result.code);
+        onCodeValidated(result.code, selectedHouse);
       } else {
         setError(result.error || "Invalid code. Please try again.");
       }
@@ -157,6 +163,44 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
               ))}
             </div>
             <p className="text-center text-xs mt-3" style={{ color: '#52525B' }}>Example: A7KF</p>
+          </div>
+
+          {/* House Selection */}
+          <div className="mb-8">
+            <p className="text-sm font-medium mb-4 text-center" style={{ color: '#A1A1AA' }}>
+              Choose Your House
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {HOUSES.map((house) => {
+                const isSelected = selectedHouse === house.name;
+                return (
+                  <motion.button
+                    key={house.name}
+                    onClick={() => {
+                      setSelectedHouse(house.name as House);
+                      setError('');
+                    }}
+                    className="relative rounded-xl p-4 transition-all duration-200 focus:outline-none"
+                    style={{
+                      background: isSelected ? `${house.color}20` : 'rgba(255,255,255,0.04)',
+                      border: isSelected ? `2px solid ${house.color}` : '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: isSelected ? `0 0 20px ${house.color}40` : 'none',
+                    }}
+                    whileHover={{ y: -2, scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    aria-pressed={isSelected}
+                  >
+                    {isSelected && (
+                      <div className="absolute top-2 right-2">
+                        <CheckCircle2 size={16} style={{ color: house.color }} />
+                      </div>
+                    )}
+                    <div className="text-2xl mb-2">{house.emoji}</div>
+                    <div className="font-semibold text-white text-sm">{house.name}</div>
+                  </motion.button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Error */}

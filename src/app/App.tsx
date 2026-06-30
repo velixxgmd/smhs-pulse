@@ -12,7 +12,7 @@ import { ReviewPage } from './pages/public/ReviewPage';
 import { SuccessPage } from './pages/public/SuccessPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
-import type { VotingCode } from './types';
+import type { VotingCode, House } from './types';
 import { electionService } from "./services/electionService";
 
 type PublicPage = 'landing' | 'code-entry' | 'ballot' | 'review' | 'success';
@@ -23,6 +23,7 @@ function AppContent() {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [validatedCode, setValidatedCode] = useState<VotingCode | null>(null);
+  const [selectedHouse, setSelectedHouse] = useState<House | null>(null);
   const [ballotSelections, setBallotSelections] = useState<Record<string, string>>({});
 
 // Initialize election data
@@ -36,8 +37,9 @@ useEffect(() => {
   initialize().catch(() => {});
 }, []);
 
-const handleCodeValidated = (code: VotingCode) => {
+const handleCodeValidated = (code: VotingCode, house: House) => {
   setValidatedCode(code);
+  setSelectedHouse(house);
   setPublicPage("ballot");
 };
 
@@ -74,14 +76,18 @@ const handleCodeValidated = (code: VotingCode) => {
         {publicPage === 'code-entry' && (
           <CodeEntryPage
             key="code-entry"
-            onBack={() => setPublicPage('landing')}
+            onBack={() => {
+              setSelectedHouse(null);
+              setPublicPage('landing');
+            }}
             onCodeValidated={handleCodeValidated}
           />
         )}
-        {publicPage === 'ballot' && validatedCode && (
+        {publicPage === 'ballot' && validatedCode && selectedHouse && (
           <BallotPage
             key="ballot"
             votingCode={validatedCode}
+            selectedHouse={selectedHouse}
             onBack={() => setPublicPage('code-entry')}
             onReview={handleBallotReview}
           />
@@ -100,6 +106,7 @@ const handleCodeValidated = (code: VotingCode) => {
     key="success"
     onDone={() => {
       setValidatedCode(null);
+      setSelectedHouse(null);
       setBallotSelections({});
       setPublicPage('landing');
     }}

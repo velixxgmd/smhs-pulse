@@ -3,16 +3,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, ArrowRight, CheckCircle2, User, Loader2 } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useRefresh } from '../../context/RefreshContext';
-import type { Candidate, VotingCode } from '../../types';
+import type { Candidate, VotingCode, House } from '../../types';
 import { ELECTION_ROLES } from '../../lib/constants';
 
 interface Props {
   votingCode: VotingCode;
+  selectedHouse: House;
   onBack: () => void;
   onReview: (selections: Record<string, string>) => void;
 }
 
-export function BallotPage({ votingCode, onBack, onReview }: Props) {
+export function BallotPage({ votingCode, selectedHouse, onBack, onReview }: Props) {
   const { revision } = useRefresh();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
@@ -21,6 +22,33 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
   const [loading, setLoading] = useState(true);
   const [layout, setLayout] = useState<'multi' | 'single'>('multi');
   const [electionStatus, setElectionStatus] = useState<string | null>(null);
+
+  const isHouseRole = (role: string): boolean => {
+    return role.includes('House Captain') || (role.includes('Deputy') && role.includes('House'));
+  };
+
+  const getHouseFromRole = (role: string): string | null => {
+    if (role.includes('Pragathi')) return 'Pragathi';
+    if (role.includes('Sakthi')) return 'Shakthi';
+    if (role.includes('Shanthi')) return 'Shanthi';
+    if (role.includes('Jothi')) return 'Jothi';
+    return null;
+  };
+
+  const shouldShowRole = (role: string): boolean => {
+    if (!isHouseRole(role)) return true;
+    const roleHouse = getHouseFromRole(role);
+    return roleHouse === selectedHouse;
+  };
+
+  const filterCandidatesForRole = (role: string, candidates: Candidate[]): Candidate[] => {
+    if (!isHouseRole(role)) return candidates;
+    const roleHouse = getHouseFromRole(role);
+    return candidates.filter(c => {
+      const candidateHouse = getHouseFromRole(c.role);
+      return candidateHouse === selectedHouse;
+    });
+  };
 
   useEffect(() => {
     (async () => {
@@ -40,20 +68,28 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
           return aKey - bKey;
         });
         setRoles(orderedRoles);
-        setRoleIdx(i => (i >= orderedRoles.length ? 0 : i));
+        setRoleIdx(i => {
+          const filteredRoles = orderedRoles.filter(r => {
+            if (!isHouseRole(r)) return true;
+            const roleHouse = getHouseFromRole(r);
+            return roleHouse === selectedHouse;
+          });
+          return i >= filteredRoles.length ? 0 : i;
+        });
         setLayout(election.voting_layout === 'single' ? 'single' : 'multi');
         setElectionStatus(election.status);
       } finally {
         setLoading(false);
       }
     })();
-  }, [revision]);
+  }, [revision, selectedHouse]);
 
-  const currentRole = roles[roleIdx];
-  const currentCandidates = candidates.filter(c => c.role === currentRole).sort((a, b) => a.order_index - b.order_index);
-  const isLastRole = roleIdx === roles.length - 1;
-  const selectedForRole = selections[currentRole];
-  const allSelected = roles.every(r => selections[r]);
+  const visibleRoles = roles.filter(shouldShowRole);
+  const currentRole = visibleRoles[roleIdx];
+  const currentCandidates = currentRole ? filterCandidatesForRole(currentRole, candidates.filter(c => c.role === currentRole)).sort((a, b) => a.order_index - b.order_index) : [];
+  const isLastRole = roleIdx === visibleRoles.length - 1;
+  const selectedForRole = currentRole ? selections[currentRole] : undefined;
+  const allSelected = visibleRoles.every(r => selections[r]);
 
   const handleSelect = (candidateId: string) => {
     setSelections(prev => ({ ...prev, [currentRole]: candidateId }));
@@ -78,6 +114,35 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
         <div className="flex flex-col items-center gap-4">
           <Loader2 size={40} className="animate-spin" style={{ color: '#7C3AED' }} />
           <p style={{ color: '#71717A' }}>Loading candidates...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentRole || visibleRoles.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-2xl">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-sm mb-10 transition-colors duration-200"
+            style={{ color: '#71717A' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#A1A1AA')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#71717A')}
+          >
+            <ArrowLeft size={16} />
+            Back
+          </button>
+
+          <div className="glass rounded-3xl p-10 text-center">
+            <h1 className="text-2xl font-bold text-white mb-2">No Positions Available</h1>
+            <p className="text-sm mb-4" style={{ color: '#71717A' }}>
+              There are no voting positions available for your house at this time.
+            </p>
+            <p className="text-xs font-semibold" style={{ color: '#52525B' }}>
+              Selected House: {selectedHouse}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -132,10 +197,10 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
             </button>
             <div className="text-center">
               <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#7C3AED' }}>
-                Position {roleIdx + 1} of {roles.length}
+                Position {roleIdx + 1} of {visibleRoles.length}
               </div>
               <div className="flex items-center gap-1.5">
-                {roles.map((_, i) => (
+                {visibleRoles.map((_, i) => (
                   <div key={i} className="rounded-full transition-all duration-300"
                     style={{
                       width: i === roleIdx ? 24 : 8,
@@ -146,7 +211,7 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
               </div>
             </div>
             <div className="text-xs" style={{ color: '#52525B' }}>
-              {Object.keys(selections).length}/{roles.length} selected
+              {Object.keys(selections).length}/{visibleRoles.length} selected
             </div>
           </div>
         ) : (
@@ -166,7 +231,7 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
                 Single Page Ballot
               </div>
               <div className="text-xs" style={{ color: '#52525B' }}>
-                {Object.keys(selections).length}/{roles.length} selected
+                {Object.keys(selections).length}/{visibleRoles.length} selected
               </div>
             </div>
             <div className="w-16" />
@@ -266,8 +331,8 @@ export function BallotPage({ votingCode, onBack, onReview }: Props) {
         ) : (
           <>
             <div className="space-y-10 mb-10">
-              {roles.map(role => {
-                const roleCandidates = candidates.filter(c => c.role === role).sort((a, b) => a.order_index - b.order_index);
+              {visibleRoles.map(role => {
+                const roleCandidates = filterCandidatesForRole(role, candidates.filter(c => c.role === role)).sort((a, b) => a.order_index - b.order_index);
                 const selected = selections[role];
 
                 return (

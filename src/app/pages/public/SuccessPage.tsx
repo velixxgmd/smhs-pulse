@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { CheckCircle2, Shield, Home } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -9,6 +9,8 @@ interface Props {
 
 export function SuccessPage({ onDone }: Props) {
   const hasRun = useRef(false);
+  const [countdown, setCountdown] = useState(10);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (hasRun.current) return;
@@ -23,6 +25,32 @@ export function SuccessPage({ onDone }: Props) {
       scalar: 0.9,
     });
   }, []);
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          onDone();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [onDone]);
+
+  const handleReturnNow = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    onDone();
+  };
 
   const refNum = Math.random().toString(36).substring(2, 10).toUpperCase();
 
@@ -91,9 +119,24 @@ export function SuccessPage({ onDone }: Props) {
           ))}
         </motion.div>
 
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="mt-8 p-4 rounded-xl"
+          style={{
+            background: 'rgba(124,58,237,0.1)',
+            border: '1px solid rgba(124,58,237,0.3)',
+          }}
+        >
+          <p className="text-sm font-medium" style={{ color: '#A1A1AA' }}>
+            Returning to the home page in <span className="font-bold" style={{ color: '#7C3AED' }}>{countdown}</span> seconds...
+          </p>
+        </motion.div>
+
         <div className="mt-10 space-y-6">
   <button
-    onClick={onDone}
+    onClick={handleReturnNow}
     className="w-full py-4 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all"
     style={{
       background: 'linear-gradient(135deg, #7C3AED, #A855F7)',
@@ -101,7 +144,7 @@ export function SuccessPage({ onDone }: Props) {
     }}
   >
     <Home size={18} />
-    Done
+    Return to Home Now
   </button>
 
   <motion.div

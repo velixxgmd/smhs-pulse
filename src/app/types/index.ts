@@ -1,5 +1,7 @@
 export type ElectionMode = 'demo' | 'live';
 
+export type House = 'Shakthi' | 'Shanthi' | 'Jothi' | 'Pragathi';
+
 export type ElectionStatus = 'UPCOMING' | 'LIVE' | 'PAUSED' | 'CLOSED' | 'ARCHIVED' | 'RESULTS_PUBLISHED';
 
 export type VotingLayout = 'multi' | 'single';
