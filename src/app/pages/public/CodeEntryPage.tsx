@@ -12,7 +12,7 @@ interface Props {
 
 export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
   const { revision } = useRefresh();
-  const [parts, setParts] = useState(['', '', '', '', '', '']);
+  const [parts, setParts] = useState(['', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [electionStatus, setElectionStatus] = useState<string | null>(null);
@@ -29,17 +29,15 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
   }, [revision]);
 
   const getFullCode = () => {
-    const combined = parts.join('').toUpperCase();
-    return `${combined.slice(0, 3)}-${combined.slice(3, 6)}`;
-  };
-
+  return parts.join('').toUpperCase();
+};
   const handleChange = (idx: number, val: string) => {
     const char = val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(-1);
     const next = [...parts];
     next[idx] = char;
     setParts(next);
     setError('');
-    if (char && idx < 5) inputRefs.current[idx + 1]?.focus();
+   if (char && idx < 3) inputRefs.current[idx + 1]?.focus();
   };
 
   const handleKeyDown = (idx: number, e: React.KeyboardEvent) => {
@@ -49,14 +47,25 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 6);
-    const next = Array(6).fill('');
-    [...text].forEach((c, i) => { next[i] = c; });
-    setParts(next);
-    const focusIdx = Math.min(text.length, 5);
-    inputRefs.current[focusIdx]?.focus();
-  };
+  e.preventDefault();
+
+  const text = e.clipboardData
+    .getData('text')
+    .replace(/[^A-Z0-9]/gi, '')
+    .toUpperCase()
+    .slice(0, 4);
+
+  const next = Array(4).fill('');
+
+  [...text].forEach((c, i) => {
+    next[i] = c;
+  });
+
+  setParts(next);
+
+  const focusIdx = Math.min(text.length, 3);
+  inputRefs.current[focusIdx]?.focus();
+};
 
   const handleSubmit = async () => {
     if (electionStatus && electionStatus !== 'LIVE') {
@@ -69,8 +78,8 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
     }
 
     const code = getFullCode();
-    if (parts.filter(Boolean).length < 6) {
-      setError('Please enter your complete 6-character voting code.');
+    if (parts.filter(Boolean).length < 4) {
+      setError('Please enter your complete 4-character voting code.');
       return;
     }
     setLoading(true);
@@ -127,9 +136,6 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
             <div className="flex items-center justify-center gap-2 mb-2" onPaste={handlePaste}>
               {parts.map((val, idx) => (
                 <React.Fragment key={idx}>
-                  {idx === 3 && (
-                    <span className="text-2xl font-bold select-none" style={{ color: '#3f3f46' }}>-</span>
-                  )}
                   <input
                     ref={el => { inputRefs.current[idx] = el; }}
                     type="text"
@@ -150,7 +156,7 @@ export function CodeEntryPage({ onBack, onCodeValidated }: Props) {
                 </React.Fragment>
               ))}
             </div>
-            <p className="text-center text-xs mt-3" style={{ color: '#52525B' }}>Example: XYZ-ABC</p>
+            <p className="text-center text-xs mt-3" style={{ color: '#52525B' }}>Example: A7KF</p>
           </div>
 
           {/* Error */}

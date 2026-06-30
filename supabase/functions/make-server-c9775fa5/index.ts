@@ -132,12 +132,13 @@ app.post("/make-server-c9775fa5/generate-codes", async (c: any) => {
     const body = await c.req.json();
     const { class: cls, section, max_roll } = body;
     if (!cls || !section || !max_roll) return c.json({ error: "Missing required fields" }, 400);
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const genCode = () => {
-      const p1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      const p2 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      return `${p1}-${p2}`;
-    };
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+const genCode = () => {
+  return Array.from({ length: 4 }, () =>
+    chars[Math.floor(Math.random() * chars.length)]
+  ).join("");
+};
     const batchId = `BATCH-${Date.now().toString(36).toUpperCase()}`;
     const newCodes = [];
     for (let roll = 1; roll <= max_roll; roll++) {
