@@ -3,7 +3,7 @@ import { publicAnonKey } from '../../../utils/supabase/info';
 import type {
   Candidate, VotingCode, AttemptLog, TurnoutData, Election,
   CodeValidationResult, VotePayload, VoteResult, ElectionResults,
-  BatchConfig, ElectionStatus, VotingLayout
+  BatchConfig, ElectionStatus, VotingLayout, VoteIdLookupResult
 } from '../types';
 
 const headers = () => ({
@@ -90,6 +90,12 @@ async submitVote(payload: VotePayload): Promise<VoteResult> {
     try {
       return await api(`/lookup-code?class=${cls}&section=${section}&roll=${roll}`);
     } catch { return null; }
+  },
+
+  async lookupVoteId(voteId: string): Promise<VoteIdLookupResult> {
+    try {
+      return await api(`/lookup-vote-id?voteId=${encodeURIComponent(voteId)}`);
+    } catch { return { found: false }; }
   },
 
   async getTurnout(): Promise<TurnoutData[]> {
@@ -184,6 +190,12 @@ async submitVote(payload: VotePayload): Promise<VoteResult> {
 
   async fullReset(): Promise<void> {
     await api(`/admin/full-reset`, { method: 'POST' });
+  },
+
+  async finalizeElection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await api(`/admin/finalize-election`, { method: 'POST' });
+    } catch (e) { return { success: false, error: String(e) }; }
   },
 
   async restoreDemoData(): Promise<void> {},

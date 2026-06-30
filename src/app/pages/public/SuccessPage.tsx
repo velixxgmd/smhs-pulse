@@ -4,10 +4,11 @@ import { CheckCircle2, Shield, Home } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface Props {
+  voteId: string;
   onDone: () => void;
 }
 
-export function SuccessPage({ onDone }: Props) {
+export function SuccessPage({ voteId, onDone }: Props) {
   const hasRun = useRef(false);
   const [countdown, setCountdown] = useState(10);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,8 +53,6 @@ export function SuccessPage({ onDone }: Props) {
     onDone();
   };
 
-  const refNum = Math.random().toString(36).substring(2, 10).toUpperCase();
-
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
       <motion.div
@@ -93,12 +92,15 @@ export function SuccessPage({ onDone }: Props) {
           className="glass rounded-2xl p-6 mb-8 space-y-4"
         >
           <p className="text-sm" style={{ color: '#A1A1AA' }}>
-            Your ballot has been securely recorded. Your voting code has now expired permanently.
+            Your vote has been securely recorded.
           </p>
           <div className="border-t pt-4" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <p className="text-xs mb-1" style={{ color: '#52525B' }}>Reference Number</p>
-            <p className="font-mono font-bold text-lg" style={{ color: '#7C3AED' }}>{refNum}</p>
+            <p className="text-xs mb-1" style={{ color: '#52525B' }}>Vote ID</p>
+            <p className="font-mono font-bold text-lg" style={{ color: '#7C3AED' }}>{voteId}</p>
           </div>
+          <p className="text-xs" style={{ color: '#71717A' }}>
+            Keep this Vote ID if an election officer needs to verify that your vote was successfully recorded.
+          </p>
         </motion.div>
 
         <motion.div
@@ -130,7 +132,7 @@ export function SuccessPage({ onDone }: Props) {
           }}
         >
           <p className="text-sm font-medium" style={{ color: '#A1A1AA' }}>
-            Returning to the home page in <span className="font-bold" style={{ color: '#7C3AED' }}>{countdown}</span> seconds...
+            Returning to Home in <span className="font-bold" style={{ color: '#7C3AED' }}>{countdown}</span> seconds...
           </p>
         </motion.div>
 
@@ -144,7 +146,7 @@ export function SuccessPage({ onDone }: Props) {
     }}
   >
     <Home size={18} />
-    Return to Home Now
+    Return Now
   </button>
 
   <motion.div

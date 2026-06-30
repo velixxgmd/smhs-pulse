@@ -3,7 +3,7 @@ import { DEMO_CANDIDATES, generateDemoCodes, DEMO_ELECTION } from '../data/demoD
 import type {
   Candidate, VotingCode, AttemptLog, TurnoutData, Election,
   CodeValidationResult, VotePayload, VoteResult, ElectionResults,
-  BatchConfig, ElectionStatus, VotingLayout
+  BatchConfig, ElectionStatus, VotingLayout, VoteIdLookupResult
 } from '../types';
 import {
   generateDeviceHash,
@@ -19,6 +19,18 @@ function generateCode(): string {
   const p1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   const p2 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   return `${p1}-${p2}`;
+}
+
+function generateVoteId(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const votes = getVotes();
+  const existingIds = new Set(votes.map(v => v.voteId || v.id));
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const suffix = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const voteId = `VOTE-${suffix}`;
+    if (!existingIds.has(voteId)) return voteId;
+  }
+  throw new Error('Could not generate unique Vote ID');
 }
 
 function getRevision(): string {
@@ -62,21 +74,28 @@ function saveCandidates(candidates: Candidate[]): void {
   bumpRevision();
 }
 
-function getVotes(): Array<VotePayload & { id: string; voted_at: string }> {
+function getVotes(): Array<VotePayload & { id: string; voteId: string; voted_at: string }> {
   return JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_VOTES) || '[]');
 }
 
-function saveVotes(votes: Array<VotePayload & { id: string; voted_at: string }>): void {
+function saveVotes(votes: Array<VotePayload & { id: string; voteId: string; voted_at: string }>): void {
   localStorage.setItem(STORAGE_KEYS.DEMO_VOTES, JSON.stringify(votes));
 }
 
 function getElection(): Election {
   const stored = localStorage.getItem(STORAGE_KEYS.DEMO_ELECTION);
+  let election: Election;
   if (!stored) {
     localStorage.setItem(STORAGE_KEYS.DEMO_ELECTION, JSON.stringify(DEMO_ELECTION));
-    return DEMO_ELECTION;
+    election = DEMO_ELECTION;
+  } else {
+    election = JSON.parse(stored);
   }
-  return JSON.parse(stored);
+  if (typeof election.finalized !== 'boolean') {
+    election.finalized = false;
+    localStorage.setItem(STORAGE_KEYS.DEMO_ELECTION, JSON.stringify(election));
+  }
+  return election;
 }
 
 function saveElection(e: Election): void {
@@ -123,7 +142,6 @@ export const DemoElectionService = {
     }
     codes[idx].status = 'used';
     codes[idx].used_at = new Date().toISOString();
-    saveCodes(codes);
 
     const candidates = getCandidates();
     Object.values(data.candidate_selections).forEach(candId => {
@@ -132,10 +150,14 @@ export const DemoElectionService = {
     });
     saveCandidates(candidates);
 
+    const voteId = generateVoteId();
     const votes = getVotes();
-    votes.push({ ...data, id: Math.random().toString(36).substring(2), voted_at: new Date().toISOString() });
+    votes.push({ ...data, id: voteId, voteId, voted_at: new Date().toISOString() });
     saveVotes(votes);
-    return { success: true };
+
+    codes[idx].voteId = voteId;
+    saveCodes(codes);
+    return { success: true, voteId };
   },
 
   async getCandidates(role?: string): Promise<Candidate[]> {
@@ -228,6 +250,29 @@ export const DemoElectionService = {
     return codes.find(c => c.class === cls && c.section === section && c.roll_number === roll) || null;
   },
 
+  async lookupVoteId(voteId: string): Promise<VoteIdLookupResult> {
+    await new Promise(r => setTimeout(r, 400));
+    const votes = getVotes();
+    const vote = votes.find(v => v.voteId === voteId);
+    if (!vote) return { found: false };
+    const election = getElection();
+    const isFinalized = election.finalized === true;
+    let connectedCode: string | null = null;
+    if (!isFinalized) {
+      const codes = getCodes();
+      const code = codes.find(c => c.voteId === voteId);
+      if (code) connectedCode = code.code;
+    }
+    return {
+      found: true,
+      voteId: vote.voteId,
+      status: 'Recorded Successfully',
+      timestamp: vote.voted_at,
+      connectedCode,
+      finalized: isFinalized,
+    };
+  },
+
   async getTurnout(): Promise<TurnoutData[]> {
     await new Promise(r => setTimeout(r, 200));
     const codes = getCodes();
@@ -290,6 +335,8 @@ export const DemoElectionService = {
   async startNewElection(patch: { name?: string; year?: number }): Promise<void> {
     const election = getElection();
     election.status = "LIVE";
+    election.finalized = false;
+    delete election.finalized_at;
 
     if (typeof patch.name === "string") {
       const nextName = patch.name.trim();
@@ -337,14 +384,31 @@ export const DemoElectionService = {
     localStorage.removeItem(STORAGE_KEYS.DEMO_VOTES);
     const candidates = getCandidates().map(c => ({ ...c, votes: 0 }));
     saveCandidates(candidates);
-    const codes = getCodes().map(c => ({ ...c, status: 'unused' as const, used_at: undefined }));
+    const codes = getCodes().map(c => ({ ...c, status: 'unused' as const, used_at: undefined, voteId: undefined }));
     saveCodes(codes);
     localStorage.removeItem(STORAGE_KEYS.DEVICE_VOTES);
   },
 
   async resetCodesOnly(): Promise<void> {
-    const codes = getCodes().map(c => ({ ...c, status: 'unused' as const, used_at: undefined }));
+    const codes = getCodes().map(c => ({ ...c, status: 'unused' as const, used_at: undefined, voteId: undefined }));
     saveCodes(codes);
+  },
+
+  async finalizeElection(): Promise<{ success: boolean; error?: string }> {
+    const election = getElection();
+    if (election.finalized) return { success: false, error: 'Election already finalized.' };
+    const codes = getCodes().map(c => {
+      if (c.voteId) {
+        const { voteId: _, ...rest } = c;
+        return rest as VotingCode;
+      }
+      return c;
+    });
+    saveCodes(codes);
+    election.finalized = true;
+    election.finalized_at = new Date().toISOString();
+    saveElection(election);
+    return { success: true };
   },
 
   async clearAttemptLogs(): Promise<void> {

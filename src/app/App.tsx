@@ -25,6 +25,7 @@ function AppContent() {
   const [validatedCode, setValidatedCode] = useState<VotingCode | null>(null);
   const [selectedHouse, setSelectedHouse] = useState<House | null>(null);
   const [ballotSelections, setBallotSelections] = useState<Record<string, string>>({});
+  const [voteId, setVoteId] = useState('');
 
 // Initialize election data
 useEffect(() => {
@@ -46,6 +47,11 @@ const handleCodeValidated = (code: VotingCode, house: House) => {
   const handleBallotReview = (selections: Record<string, string>) => {
     setBallotSelections(selections);
     setPublicPage('review');
+  };
+
+  const handleVoteSuccess = (id: string) => {
+    setVoteId(id);
+    setPublicPage('success');
   };
 
   if (showAdminDashboard) {
@@ -98,16 +104,18 @@ const handleCodeValidated = (code: VotingCode, house: House) => {
             votingCode={validatedCode}
             selections={ballotSelections}
             onBack={() => setPublicPage('ballot')}
-            onSuccess={() => setPublicPage('success')}
+            onSuccess={handleVoteSuccess}
           />
         )}
         {publicPage === 'success' && (
   <SuccessPage
     key="success"
+    voteId={voteId}
     onDone={() => {
       setValidatedCode(null);
       setSelectedHouse(null);
       setBallotSelections({});
+      setVoteId('');
       setPublicPage('landing');
     }}
   />

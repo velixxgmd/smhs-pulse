@@ -11,6 +11,7 @@ import { useMode } from '../../context/ModeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useRefresh } from '../../context/RefreshContext';
 import type { TurnoutData, AttemptLog, Election } from '../../types';
+import { toast } from 'sonner';
 import { AdminCandidatesPage } from './AdminCandidatesPage';
 import { AdminCodesPage } from './AdminCodesPage';
 import { AdminExportPage } from './AdminExportPage';
@@ -60,6 +61,8 @@ export function AdminDashboardPage({ onClose }: Props) {
   const [newElectionYear, setNewElectionYear] = useState('');
   const [newElectionBaseline, setNewElectionBaseline] = useState<{ name: string; year: number } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('smhs_admin_sidebar_collapsed') === '1');
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -166,6 +169,24 @@ const confirmLiveSwitch = async () => {
     }
   };
 
+  const handleFinalizeElection = async () => {
+    setFinalizing(true);
+    try {
+      const result = await electionService.finalizeElection();
+      if (result.success) {
+        toast.success('Election finalized. Voting code relationships have been permanently destroyed.');
+        setShowFinalizeModal(false);
+        await loadData();
+      } else {
+        toast.error(result.error || 'Finalization failed.');
+      }
+    } catch (e) {
+      toast.error(`Finalization failed: ${e}`);
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-40 flex" style={{ background: '#09090B' }}>
       {/* Sidebar */}
@@ -257,6 +278,9 @@ const confirmLiveSwitch = async () => {
                 <span className="text-xs font-medium" style={{ color: '#EF4444' }}>INVALID STATUS</span>
               ) : (
                 <span className="text-xs font-medium" style={{ color: '#EF4444' }}>MISSING STATUS</span>
+              )}
+              {election?.finalized && (
+                <span className="text-xs font-semibold px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>Finalized</span>
               )}
             </div>
           </div>
@@ -372,13 +396,27 @@ const confirmLiveSwitch = async () => {
                       style={{ background: 'rgba(34,211,238,0.15)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}>
                       <TrendingUp size={14} /> Publish Results
                     </button>
+                    {!election?.finalized && (
+                      <button onClick={() => setShowFinalizeModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                        style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        <Shield size={14} /> Finalize Election
+                      </button>
+                    )}
                   </>
                 )}
                 {election?.status === 'RESULTS_PUBLISHED' && (
-                  <button onClick={openStartNewElection} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
-                    <Play size={14} /> Start New Election
-                  </button>
+                  <>
+                    <button onClick={openStartNewElection} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                      <Play size={14} /> Start New Election
+                    </button>
+                    {!election?.finalized && (
+                      <button onClick={() => setShowFinalizeModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+                        style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        <Shield size={14} /> Finalize Election
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -547,6 +585,41 @@ const confirmLiveSwitch = async () => {
                   className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
                   style={{ background: 'linear-gradient(135deg, #22C55E, #16A34A)', opacity: startingNewElection ? 0.85 : 1 }}>
                   {startingNewElection ? <><Loader2 size={15} className="animate-spin" />Starting...</> : <><Play size={15} />Start Election</>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showFinalizeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="glass-elevated rounded-3xl p-8 w-full max-w-md" role="dialog" aria-modal="true">
+              <div className="flex items-start gap-4 mb-6">
+                <div className="p-2 rounded-xl flex-shrink-0" style={{ background: 'rgba(239,68,68,0.15)' }}>
+                  <AlertTriangle size={22} style={{ color: '#EF4444' }} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white mb-1">Finalize Election</h2>
+                  <p className="text-sm" style={{ color: '#A1A1AA' }}>
+                    This will permanently destroy the relationship between Voting Codes and Vote IDs.
+                    Anonymous vote records will remain intact.
+                  </p>
+                  <p className="text-sm mt-2 font-semibold" style={{ color: '#EF4444' }}>
+                    This action CANNOT be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowFinalizeModal(false)} disabled={finalizing} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#A1A1AA', opacity: finalizing ? 0.6 : 1 }}>
+                  Cancel
+                </button>
+                <button onClick={handleFinalizeElection} disabled={finalizing}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #EF4444, #DC2626)', opacity: finalizing ? 0.85 : 1 }}>
+                  {finalizing ? <><Loader2 size={15} className="animate-spin" />Finalizing...</> : <><Shield size={15} />Finalize Election</>}
                 </button>
               </div>
             </motion.div>

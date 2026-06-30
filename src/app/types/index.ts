@@ -37,6 +37,7 @@ export interface VotingCode {
   roll_number: number;
   status: CodeStatus;
   used_at?: string;
+  voteId?: string;
   generated_at: string;
   batch_id: string;
   generated_by?: string;
@@ -44,6 +45,7 @@ export interface VotingCode {
 
 export interface Vote {
   id: string;
+  voteId: string;
   code_id: string;
   candidate_selections: Record<string, string>; // role -> candidateId
   voted_at: string;
@@ -81,6 +83,8 @@ export interface Election {
   ended_at?: string;
   total_votes?: number;
   turnout_percent?: number;
+  finalized?: boolean;
+  finalized_at?: string;
 }
 
 export interface BatchConfig {
@@ -112,6 +116,7 @@ export interface VotePayload {
 
 export interface VoteResult {
   success: boolean;
+  voteId?: string;
   error?: string;
 }
 
@@ -127,4 +132,14 @@ export interface RoleResult {
   role: string;
   winner: Candidate;
   candidates: Array<Candidate & { vote_count: number }>;
+}
+
+export interface VoteIdLookupResult {
+  found: boolean;
+  voteId?: string;
+  status?: string;
+  timestamp?: string;
+  connectedCode?: string | null;
+  finalized?: boolean;
+  error?: string;
 }

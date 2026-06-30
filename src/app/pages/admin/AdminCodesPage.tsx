@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Key, Search, Loader2, CheckCircle, XCircle, Plus, X } from 'lucide-react';
+import { Key, Search, Loader2, CheckCircle, XCircle, Plus, X, Lock } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useRefresh } from '../../context/RefreshContext';
-import type { VotingCode } from '../../types';
+import type { VotingCode, VoteIdLookupResult, Election } from '../../types';
 import { toast } from 'sonner';
 
 export function AdminCodesPage() {
@@ -13,17 +13,33 @@ export function AdminCodesPage() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [genForm, setGenForm] = useState({ class: '10', section: 'A', max_roll: 30 });
   const [generating, setGenerating] = useState(false);
+  const [election, setElection] = useState<Election | null>(null);
+
+  // Student lookup state
+  const [lookupMethod, setLookupMethod] = useState<'student' | 'voteId'>('student');
   const [lookupClass, setLookupClass] = useState('');
   const [lookupSection, setLookupSection] = useState('');
   const [lookupRoll, setLookupRoll] = useState('');
   const [lookupResult, setLookupResult] = useState<VotingCode | null | 'not-found'>(null);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'unused' | 'used'>('all');
   const [lookupLoading, setLookupLoading] = useState(false);
+
+  // Vote ID lookup state
+  const [lookupVoteIdInput, setLookupVoteIdInput] = useState('');
+  const [voteIdLookupResult, setVoteIdLookupResult] = useState<VoteIdLookupResult | null>(null);
+  const [voteIdLookupLoading, setVoteIdLookupLoading] = useState(false);
+
+  const [filterStatus, setFilterStatus] = useState<'all' | 'unused' | 'used'>('all');
 
   const load = async () => {
     setLoading(true);
-    try { setCodes(await electionService.getAllCodes()); }
-    finally { setLoading(false); }
+    try {
+      const [allCodes, elec] = await Promise.all([
+        electionService.getAllCodes(),
+        electionService.getElection(),
+      ]);
+      setCodes(allCodes);
+      setElection(elec);
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [revision]);
@@ -40,13 +56,24 @@ export function AdminCodesPage() {
     finally { setGenerating(false); }
   };
 
-  const handleLookup = async () => {
+  const handleStudentLookup = async () => {
     if (!lookupClass || !lookupSection || !lookupRoll) return;
     setLookupLoading(true);
     try {
       const result = await electionService.lookupCode(lookupClass, lookupSection, parseInt(lookupRoll));
       setLookupResult(result || 'not-found');
     } finally { setLookupLoading(false); }
+  };
+
+  const handleVoteIdLookup = async () => {
+    if (!lookupVoteIdInput.trim()) return;
+    setVoteIdLookupLoading(true);
+    try {
+      const result = await electionService.lookupVoteId(lookupVoteIdInput.trim().toUpperCase());
+      setVoteIdLookupResult(result);
+    } catch {
+      setVoteIdLookupResult({ found: false });
+    } finally { setVoteIdLookupLoading(false); }
   };
 
   const filtered = codes.filter(c => filterStatus === 'all' || c.status === filterStatus);
@@ -69,52 +96,181 @@ export function AdminCodesPage() {
       {/* Code Lookup */}
       <div className="glass rounded-2xl p-6 mb-6">
         <h3 className="text-base font-semibold text-white mb-4">Code Lookup</h3>
-        <div className="flex items-end gap-3 flex-wrap">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Class</label>
-            <select value={lookupClass} onChange={e => setLookupClass(e.target.value)}
-              className="px-3 py-2.5 rounded-xl text-white text-sm focus:outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <option value="" style={{ background: '#18181B' }}>Select</option>
-              {['6','7','8','9','10'].map(c => <option key={c} value={c} style={{ background: '#18181B' }}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Section</label>
-            <select value={lookupSection} onChange={e => setLookupSection(e.target.value)}
-              className="px-3 py-2.5 rounded-xl text-white text-sm focus:outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <option value="" style={{ background: '#18181B' }}>Select</option>
-              {['A','B','C','D','E'].map(s => <option key={s} value={s} style={{ background: '#18181B' }}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Roll No</label>
-            <input type="number" value={lookupRoll} onChange={e => setLookupRoll(e.target.value)} placeholder="1"
-              className="w-20 px-3 py-2.5 rounded-xl text-white text-sm focus:outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
-          </div>
-          <button onClick={handleLookup} disabled={lookupLoading} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
-            style={{ background: 'rgba(124,58,237,0.15)', color: '#A855F7', border: '1px solid rgba(124,58,237,0.25)' }}>
-            {lookupLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-            Lookup
-          </button>
+
+        {/* Lookup Method Selector */}
+        <div className="flex gap-4 mb-5">
+          {([
+            { value: 'student' as const, label: 'Student Information' },
+            { value: 'voteId' as const, label: 'Vote ID' },
+          ]).map(opt => (
+            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="lookupMethod"
+                value={opt.value}
+                checked={lookupMethod === opt.value}
+                onChange={() => {
+                  setLookupMethod(opt.value);
+                  setLookupResult(null);
+                  setVoteIdLookupResult(null);
+                }}
+                className="accent-purple-600"
+              />
+              <span className="text-sm" style={{ color: lookupMethod === opt.value ? '#A1A1AA' : '#71717A' }}>{opt.label}</span>
+            </label>
+          ))}
         </div>
-        {lookupResult !== null && (
-          <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            {lookupResult === 'not-found' ? (
-              <p className="text-sm" style={{ color: '#EF4444' }}>No code found for this student.</p>
-            ) : (
-              <div className="flex items-center gap-6">
-                <span className="font-mono font-bold text-xl" style={{ color: '#7C3AED' }}>{lookupResult.code}</span>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full`}
-                  style={{ background: lookupResult.status === 'used' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)', color: lookupResult.status === 'used' ? '#EF4444' : '#22C55E' }}>
-                  {lookupResult.status.toUpperCase()}
-                </span>
-                {lookupResult.used_at && <span className="text-xs" style={{ color: '#71717A' }}>Used: {new Date(lookupResult.used_at).toLocaleString()}</span>}
+
+        {lookupMethod === 'student' ? (
+          <>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Class</label>
+                <select value={lookupClass} onChange={e => setLookupClass(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl text-white text-sm focus:outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <option value="" style={{ background: '#18181B' }}>Select</option>
+                  {['6','7','8','9','10'].map(c => <option key={c} value={c} style={{ background: '#18181B' }}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Section</label>
+                <select value={lookupSection} onChange={e => setLookupSection(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl text-white text-sm focus:outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <option value="" style={{ background: '#18181B' }}>Select</option>
+                  {['A','B','C','D','E'].map(s => <option key={s} value={s} style={{ background: '#18181B' }}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Roll No</label>
+                <input type="number" value={lookupRoll} onChange={e => setLookupRoll(e.target.value)} placeholder="1"
+                  className="w-20 px-3 py-2.5 rounded-xl text-white text-sm focus:outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
+              </div>
+              <button onClick={handleStudentLookup} disabled={lookupLoading} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: 'rgba(124,58,237,0.15)', color: '#A855F7', border: '1px solid rgba(124,58,237,0.25)' }}>
+                {lookupLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                Lookup
+              </button>
+            </div>
+            {lookupResult !== null && (
+              <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                {lookupResult === 'not-found' ? (
+                  <p className="text-sm" style={{ color: '#EF4444' }}>No code found for this student.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Class</span>
+                      <span className="text-sm text-white font-medium">{lookupResult.class}</span>
+                      <span className="text-xs" style={{ color: '#3f3f46' }}>→</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Section</span>
+                      <span className="text-sm text-white font-medium">{lookupResult.section}</span>
+                      <span className="text-xs" style={{ color: '#3f3f46' }}>→</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Roll</span>
+                      <span className="text-sm text-white font-medium">{lookupResult.roll_number}</span>
+                    </div>
+                    <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Assigned Voting Code</span>
+                      <span className="font-mono font-bold text-lg" style={{ color: '#7C3AED' }}>{lookupResult.code}</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full`}
+                        style={{ background: lookupResult.status === 'used' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)', color: lookupResult.status === 'used' ? '#EF4444' : '#22C55E' }}>
+                        {lookupResult.status.toUpperCase()}
+                      </span>
+                    </div>
+                    {lookupResult.status === 'used' && (
+                      <>
+                        <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                        <div className="flex items-center gap-4 flex-wrap">
+                          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Vote ID</span>
+                          {election?.finalized ? (
+                            <span className="text-sm font-semibold flex items-center gap-1.5" style={{ color: '#71717A' }}>
+                              <Lock size={12} />
+                              Removed after Election Finalization
+                            </span>
+                          ) : (
+                            <span className="font-mono font-bold text-lg" style={{ color: '#22D3EE' }}>{lookupResult.voteId || '—'}</span>
+                          )}
+                          {!election?.finalized && lookupResult.voteId && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E' }}>
+                              Recorded Successfully
+                            </span>
+                          )}
+                        </div>
+                        {lookupResult.used_at && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Timestamp</span>
+                            <span className="text-xs" style={{ color: '#71717A' }}>{new Date(lookupResult.used_at).toLocaleString()}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#71717A' }}>Vote ID</label>
+                <input
+                  type="text"
+                  value={lookupVoteIdInput}
+                  onChange={e => setLookupVoteIdInput(e.target.value)}
+                  placeholder="VOTE-R4QM"
+                  className="w-48 px-3 py-2.5 rounded-xl text-white text-sm font-mono focus:outline-none uppercase"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                />
+              </div>
+              <button onClick={handleVoteIdLookup} disabled={voteIdLookupLoading} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: 'rgba(124,58,237,0.15)', color: '#A855F7', border: '1px solid rgba(124,58,237,0.25)' }}>
+                {voteIdLookupLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                Lookup
+              </button>
+            </div>
+            {voteIdLookupResult !== null && (
+              <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                {!voteIdLookupResult.found ? (
+                  <p className="text-sm" style={{ color: '#EF4444' }}>Vote ID not found.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Vote ID</span>
+                      <span className="font-mono font-bold text-lg" style={{ color: '#22D3EE' }}>{voteIdLookupResult.voteId}</span>
+                    </div>
+                    <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Status</span>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E' }}>
+                        {voteIdLookupResult.status}
+                      </span>
+                    </div>
+                    {voteIdLookupResult.timestamp && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Timestamp</span>
+                        <span className="text-xs" style={{ color: '#71717A' }}>{new Date(voteIdLookupResult.timestamp).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#52525B' }}>Connected Voting Code</span>
+                      {voteIdLookupResult.finalized ? (
+                        <span className="text-sm font-semibold flex items-center gap-1.5" style={{ color: '#71717A' }}>
+                          <Lock size={12} />
+                          Permanently Removed
+                        </span>
+                      ) : (
+                        <span className="font-mono font-bold text-lg" style={{ color: '#7C3AED' }}>{voteIdLookupResult.connectedCode || '—'}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

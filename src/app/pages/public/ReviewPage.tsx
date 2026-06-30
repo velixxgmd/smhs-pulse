@@ -10,7 +10,7 @@ interface Props {
   votingCode: VotingCode;
   selections: Record<string, string>;
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (voteId: string) => void;
 }
 
 export function ReviewPage({ votingCode, selections, onBack, onSuccess }: Props) {
@@ -56,7 +56,7 @@ export function ReviewPage({ votingCode, selections, onBack, onSuccess }: Props)
         session_id: generateSessionId(),
       });
       if (result.success) {
-        onSuccess();
+        onSuccess(result.voteId || '');
       } else {
         setError(result.error || 'Submission failed. Please try again.');
       }

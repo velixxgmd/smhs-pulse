@@ -32,6 +32,17 @@ async function getVotes() {
   return result || [];
 }
 
+function generateVoteId(existingVotes: Record<string, unknown>[]): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const existingIds = new Set(existingVotes.map(v => (v.voteId as string) || (v.id as string)));
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const suffix = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const voteId = `VOTE-${suffix}`;
+    if (!existingIds.has(voteId)) return voteId;
+  }
+  throw new Error('Could not generate unique Vote ID');
+}
+
 async function getLogs() {
   const result = await kv.getByPrefix("log:");
   return result || [];
@@ -103,6 +114,7 @@ async function getElection() {
   if (typeof patched.status !== "string" || !validStatuses.has(patched.status)) { patched.status = "UPCOMING"; changed = true; }
   if (typeof patched.mode !== "string" || !validModes.has(patched.mode)) { patched.mode = "demo"; changed = true; }
   if (typeof patched.voting_layout !== "string" || !validLayouts.has(patched.voting_layout)) { patched.voting_layout = "multi"; changed = true; }
+  if (typeof patched.finalized !== "boolean") { patched.finalized = false; changed = true; }
 
   if (changed) {
     await kv.set("election:current", patched);
@@ -160,6 +172,32 @@ app.get("/make-server-c9775fa5/lookup-code", async (c: any) => {
   } catch (e) { return c.json({ error: String(e) }, 500); }
 });
 
+app.get("/make-server-c9775fa5/lookup-vote-id", async (c: any) => {
+  try {
+    const voteId = c.req.query('voteId');
+    if (!voteId) return c.json({ error: "Missing voteId" }, 400);
+    const votes = await getVotes() as Record<string, unknown>[];
+    const vote = votes.find((v) => v.voteId === voteId);
+    if (!vote) return c.json({ found: false }, 404);
+    const election = await getElection() as Record<string, unknown>;
+    const isFinalized = election.finalized === true;
+    let connectedCode = null;
+    if (!isFinalized) {
+      const codes = await getCodes() as Record<string, unknown>[];
+      const code = codes.find((cd) => cd.voteId === voteId);
+      if (code) connectedCode = code.code;
+    }
+    return c.json({
+      found: true,
+      voteId: vote.voteId,
+      status: 'Recorded Successfully',
+      timestamp: vote.voted_at,
+      connectedCode,
+      finalized: isFinalized,
+    });
+  } catch (e) { return c.json({ error: String(e) }, 500); }
+});
+
 app.post("/make-server-c9775fa5/validate-code", async (c: any) => {
   try {
     const { code } = await c.req.json();
@@ -186,9 +224,12 @@ app.post("/make-server-c9775fa5/submit-vote", async (c: any) => {
       const cand = candidates.find((cd) => cd.id === candidateId);
       if (cand) await kv.set(`candidate:${cand.id}`, { ...cand, votes: ((cand.votes as number) || 0) + 1 });
     }
-    const voteId = Math.random().toString(36).substring(2);
-    await kv.set(`vote:${voteId}`, { id: voteId, code_id: codeItem.id, candidate_selections, voted_at: new Date().toISOString(), device_hash, session_id });
-    return c.json({ success: true });
+    const votes = await getVotes() as Record<string, unknown>[];
+    const voteId = generateVoteId(votes);
+    const voteRecord = { id: voteId, voteId, code_id: codeItem.id, candidate_selections, voted_at: new Date().toISOString(), device_hash, session_id };
+    await kv.set(`vote:${voteId}`, voteRecord);
+    await kv.set(`code:${codeItem.id}`, { ...updatedCode, voteId });
+    return c.json({ success: true, voteId });
   } catch (e) { console.log("Error submitting vote:", e); return c.json({ success: false, error: String(e) }, 500); }
 });
 
@@ -311,7 +352,13 @@ app.put("/make-server-c9775fa5/election/status", async (c: any) => {
     const election = await getElection() as Record<string, unknown>;
     const updated: Record<string, unknown> = { ...election };
 
-    if (typeof status === "string" && validStatuses.has(status)) updated.status = status;
+    if (typeof status === "string" && validStatuses.has(status)) {
+      updated.status = status;
+      if (status === "LIVE") {
+        updated.finalized = false;
+        delete updated.finalized_at;
+      }
+    }
     if (typeof mode === "string" && validModes.has(mode)) updated.mode = mode;
     if (typeof name === "string" && name.trim().length > 0) updated.name = name.trim();
     if (typeof year === "number" && Number.isFinite(year)) updated.year = year;
@@ -376,12 +423,31 @@ app.post("/make-server-c9775fa5/admin/reset-password", async (c: any) => {
   } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
 });
 
+app.post("/make-server-c9775fa5/admin/finalize-election", async (c: any) => {
+  try {
+    const election = await getElection() as Record<string, unknown>;
+    if (election.finalized) return c.json({ success: false, error: "Election already finalized." });
+    const codes = await getCodes() as Record<string, unknown>[];
+    for (const code of codes) {
+      if (code.voteId) {
+        const { voteId: _, ...rest } = code;
+        await kv.set(`code:${code.id}`, rest);
+      }
+    }
+    election.finalized = true;
+    election.finalized_at = new Date().toISOString();
+    await kv.set("election:current", election);
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
 app.post("/make-server-c9775fa5/admin/reset-votes", async (c: any) => {
   try {
     const votes = await getVotes() as Record<string, unknown>[];
     for (const vote of votes) await kv.del(`vote:${vote.id}`);
     const codes = await getCodes() as Record<string, unknown>[];
-    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null });
+    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null, voteId: null });
     const candidates = await getCandidates() as Record<string, unknown>[];
     for (const cd of candidates) await kv.set(`candidate:${cd.id}`, { ...cd, votes: 0 });
     await touchRevision();
@@ -392,7 +458,7 @@ app.post("/make-server-c9775fa5/admin/reset-votes", async (c: any) => {
 app.post("/make-server-c9775fa5/admin/reset-codes", async (c: any) => {
   try {
     const codes = await getCodes() as Record<string, unknown>[];
-    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null });
+    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null, voteId: null });
     await touchRevision();
     return c.json({ success: true });
   } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
@@ -411,11 +477,13 @@ app.post("/make-server-c9775fa5/admin/full-reset", async (c: any) => {
   try {
     const [votes, codes, logs, candidates] = await Promise.all([getVotes(), getCodes(), getLogs(), getCandidates()]) as [Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[]];
     for (const vote of votes) await kv.del(`vote:${vote.id}`);
-    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null });
+    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null, voteId: null });
     for (const log of logs) await kv.del(`log:${log.id}`);
     for (const cd of candidates) await kv.set(`candidate:${cd.id}`, { ...cd, votes: 0 });
     const election = await getElection() as Record<string, unknown>;
     election.status = 'UPCOMING';
+    election.finalized = false;
+    delete election.finalized_at;
     await kv.set("election:current", election);
     await touchRevision();
     return c.json({ success: true });
