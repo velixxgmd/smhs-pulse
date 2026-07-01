@@ -77,6 +77,13 @@ export function AdminCodesPage() {
   };
 
   const filtered = codes.filter(c => filterStatus === 'all' || c.status === filterStatus);
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const classDiff = Number(a.class) - Number(b.class);
+    if (classDiff !== 0) return classDiff;
+    const sectionDiff = a.section.localeCompare(b.section);
+    if (sectionDiff !== 0) return sectionDiff;
+    return Number(a.roll_number) - Number(b.roll_number);
+  });
   const usedCount = codes.filter(c => c.status === 'used').length;
   const unusedCount = codes.filter(c => c.status === 'unused').length;
 
@@ -298,10 +305,10 @@ export function AdminCodesPage() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={7} className="py-12 text-center"><Loader2 size={24} className="animate-spin mx-auto" style={{ color: '#7C3AED' }} /></td></tr>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <tr><td colSpan={7} className="py-12 text-center text-sm" style={{ color: '#52525B' }}>No codes found. Generate codes to get started.</td></tr>
               ) : (
-                filtered.slice(0, 200).map(c => (
+                sortedFiltered.slice(0, 200).map(c => (
                   <tr key={c.id} className="border-b transition-colors" style={{ borderColor: 'rgba(255,255,255,0.03)' }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>

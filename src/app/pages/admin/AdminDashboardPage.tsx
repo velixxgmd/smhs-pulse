@@ -451,9 +451,9 @@ const confirmLiveSwitch = async () => {
               {/* Turnout bar chart */}
               <div className="glass rounded-2xl p-6">
                 <h3 className="text-base font-semibold text-white mb-6">Class Turnout Overview</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={turnout} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                    <XAxis dataKey={d => `${d.class}${d.section}`} tick={{ fill: '#71717A', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={turnout} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+                    <XAxis dataKey={d => `${d.class}${d.section}`} tick={{ fill: '#71717A', fontSize: 11 }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={50} interval={0} />
                     <YAxis tick={{ fill: '#71717A', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 100]} />
                     <Tooltip
                       contentStyle={{ background: '#1F2330', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, color: '#FAFAFA', fontSize: 12 }}
