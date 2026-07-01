@@ -13,6 +13,9 @@ export function SuccessPage({ voteId, onDone }: Props) {
   const [countdown, setCountdown] = useState(10);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
   useEffect(() => {
     if (hasRun.current) return;
     hasRun.current = true;
@@ -32,7 +35,6 @@ export function SuccessPage({ voteId, onDone }: Props) {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current!);
-          onDone();
           return 0;
         }
         return prev - 1;
@@ -44,7 +46,13 @@ export function SuccessPage({ voteId, onDone }: Props) {
         clearInterval(timerRef.current);
       }
     };
-  }, [onDone]);
+  }, []);
+
+  useEffect(() => {
+    if (countdown === 0) {
+      onDoneRef.current();
+    }
+  }, [countdown]);
 
   const handleReturnNow = () => {
     if (timerRef.current) {

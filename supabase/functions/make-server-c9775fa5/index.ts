@@ -43,6 +43,16 @@ function generateVoteId(existingVotes: Record<string, unknown>[]): string {
   throw new Error('Could not generate unique Vote ID');
 }
 
+async function getArchivedElections() {
+  const result = await kv.getByPrefix("archive:");
+  return result || [];
+}
+
+async function saveArchivedElection(archive: Record<string, unknown>) {
+  await kv.set(`archive:${archive.id}`, archive);
+  await touchRevision();
+}
+
 async function getLogs() {
   const result = await kv.getByPrefix("log:");
   return result || [];
@@ -486,6 +496,161 @@ app.post("/make-server-c9775fa5/admin/full-reset", async (c: any) => {
     delete election.finalized_at;
     await kv.set("election:current", election);
     await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
+app.get("/make-server-c9775fa5/admin/database-overview", async (c: any) => {
+  try {
+    const [codes, votes, candidates, archives, logs] = await Promise.all([
+      getCodes(),
+      getVotes(),
+      getCandidates(),
+      getArchivedElections(),
+      getLogs(),
+    ]);
+    const totalKeys = codes.length + votes.length + candidates.length + archives.length + logs.length;
+    const estimate = totalKeys < 50 ? `${(totalKeys * 0.5).toFixed(1)} KB` : `${(totalKeys * 0.5 / 1024).toFixed(2)} MB`;
+    return c.json({
+      status: 'Connected',
+      storageUsed: estimate,
+      totalVotes: votes.length,
+      totalVotingCodes: codes.length,
+      totalCandidates: candidates.length,
+      totalArchivedElections: archives.length,
+      totalSecurityLogs: logs.length,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (e) { return c.json({ status: 'Disconnected', storageUsed: '0 B', totalVotes: 0, totalVotingCodes: 0, totalCandidates: 0, totalArchivedElections: 0, totalSecurityLogs: 0, lastUpdated: new Date().toISOString() }, 500); }
+});
+
+app.get("/make-server-c9775fa5/archives", async (c: any) => {
+  try {
+    const archives = await getArchivedElections();
+    return c.json(archives);
+  } catch (e) { return c.json({ error: String(e) }, 500); }
+});
+
+app.post("/make-server-c9775fa5/admin/archive-election", async (c: any) => {
+  try {
+    const election = await getElection() as Record<string, unknown>;
+    if (!election || election.status !== 'RESULTS_PUBLISHED') {
+      return c.json({ success: false, error: 'Election must be published before archiving.' });
+    }
+    const archives = await getArchivedElections() as Record<string, unknown>[];
+    if (archives.some((a: any) => a.electionId === election.id)) {
+      return c.json({ success: false, error: 'This election has already been archived.' });
+    }
+    const [candidates, codes] = await Promise.all([getCandidates(), getCodes()]);
+    const totalVoted = (codes as Record<string, unknown>[]).filter((cd: any) => cd.status === 'used').length;
+    const roles = [...new Set((candidates as Record<string, unknown>[]).map((cd: any) => cd.role as string))];
+    const results = roles.map((role) => {
+      const roleCands = (candidates as Record<string, unknown>[]).filter((cd: any) => cd.role === role).sort((a: any, b: any) => ((b.votes as number) || 0) - ((a.votes as number) || 0));
+      return { role, winner: roleCands[0] || null, candidates: roleCands.map((cd: any) => ({ ...cd, vote_count: (cd.votes as number) || 0 })) };
+    });
+    const map = new Map<string, { voted: number; total: number }>();
+    (codes as Record<string, unknown>[]).forEach((cd: any) => {
+      const key = `${cd.class}-${cd.section}`;
+      const entry = map.get(key) || { voted: 0, total: 0 };
+      entry.total++;
+      if (cd.status === 'used') entry.voted++;
+      map.set(key, entry);
+    });
+    const houseResults = Array.from(map.entries()).map(([key, val]) => {
+      const [cls, sec] = key.split('-');
+      return { class: cls, section: sec, voted: val.voted, total: val.total, percent: val.total > 0 ? Math.round((val.voted / val.total) * 100) : 0 };
+    }).sort((a: any, b: any) => a.class.localeCompare(b.class) || a.section.localeCompare(b.section));
+    const archive = {
+      id: `ARCH-${Date.now().toString(36).toUpperCase()}`,
+      electionId: election.id,
+      name: election.name,
+      year: election.year,
+      electionDate: election.ended_at || election.created_at,
+      archivedAt: new Date().toISOString(),
+      totalVotes: totalVoted,
+      totalStudents: codes.length,
+      turnoutPercent: codes.length > 0 ? Math.round((totalVoted / codes.length) * 100) : 0,
+      results,
+      houseResults,
+      status: 'Archived',
+    };
+    await saveArchivedElection(archive);
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
+app.post("/make-server-c9775fa5/admin/delete-codes", async (c: any) => {
+  try {
+    const codes = await getCodes() as Record<string, unknown>[];
+    for (const code of codes) await kv.del(`code:${code.id}`);
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
+app.post("/make-server-c9775fa5/admin/delete-votes", async (c: any) => {
+  try {
+    const votes = await getVotes() as Record<string, unknown>[];
+    for (const vote of votes) await kv.del(`vote:${vote.id}`);
+    const codes = await getCodes() as Record<string, unknown>[];
+    for (const code of codes) await kv.set(`code:${code.id}`, { ...code, status: 'unused', used_at: null, voteId: null });
+    const candidates = await getCandidates() as Record<string, unknown>[];
+    for (const cd of candidates) await kv.set(`candidate:${cd.id}`, { ...cd, votes: 0 });
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
+app.post("/make-server-c9775fa5/admin/delete-election", async (c: any) => {
+  try {
+    const votes = await getVotes() as Record<string, unknown>[];
+    for (const vote of votes) await kv.del(`vote:${vote.id}`);
+    const codes = await getCodes() as Record<string, unknown>[];
+    for (const code of codes) await kv.del(`code:${code.id}`);
+    await kv.del("election:current");
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
+app.post("/make-server-c9775fa5/admin/delete-everything", async (c: any) => {
+  try {
+    const [votes, codes, logs, candidates, archives] = await Promise.all([getVotes(), getCodes(), getLogs(), getCandidates(), getArchivedElections()]) as [Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[]];
+    for (const vote of votes) await kv.del(`vote:${vote.id}`);
+    for (const code of codes) await kv.del(`code:${code.id}`);
+    for (const log of logs) await kv.del(`log:${log.id}`);
+    for (const cd of candidates) await kv.del(`candidate:${cd.id}`);
+    for (const arc of archives) await kv.del(`archive:${arc.id}`);
+    await kv.del("election:current");
+    await kv.del("admin:config");
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
+});
+
+app.delete("/make-server-c9775fa5/admin/archives", async (c: any) => {
+  try {
+    const archives = await getArchivedElections() as Record<string, unknown>[];
+    for (const arc of archives) await kv.del(`archive:${arc.id}`);
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: String(e) }, 500); }
+});
+
+app.delete("/make-server-c9775fa5/admin/archives/:id", async (c: any) => {
+  try {
+    const id = c.req.param('id');
+    await kv.del(`archive:${id}`);
+    await touchRevision();
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: String(e) }, 500); }
+});
+
+app.post("/make-server-c9775fa5/log-attempt", async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const id = Math.random().toString(36).substring(2);
+    await kv.set(`log:${id}`, { ...body, id });
     return c.json({ success: true });
   } catch (e) { return c.json({ success: false, error: String(e) }, 500); }
 });
