@@ -3,7 +3,8 @@ import { DEMO_CANDIDATES, generateDemoCodes, DEMO_ELECTION } from '../data/demoD
 import type {
   Candidate, VotingCode, AttemptLog, TurnoutData, Election,
   CodeValidationResult, VotePayload, VoteResult, ElectionResults,
-  BatchConfig, ElectionStatus, VotingLayout, VoteIdLookupResult
+  BatchConfig, ElectionStatus, VotingLayout, VoteIdLookupResult,
+  ArchivedElection, DatabaseOverview
 } from '../types';
 import {
   generateDeviceHash,
@@ -111,6 +112,34 @@ function getAdminConfig() {
     return cfg;
   }
   return JSON.parse(stored);
+}
+
+function getArchivedElections(): ArchivedElection[] {
+  const stored = localStorage.getItem(STORAGE_KEYS.DEMO_ARCHIVES);
+  if (!stored) return [];
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return [];
+  }
+}
+
+function saveArchivedElections(archives: ArchivedElection[]): void {
+  localStorage.setItem(STORAGE_KEYS.DEMO_ARCHIVES, JSON.stringify(archives));
+}
+
+function estimateStorage(): string {
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('smhs_')) {
+      total += (localStorage.getItem(key) || '').length * 2; // UTF-16 bytes
+    }
+  }
+  if (total === 0) return '0 B';
+  if (total < 1024) return `${total} B`;
+  if (total < 1024 * 1024) return `${(total / 1024).toFixed(1)} KB`;
+  return `${(total / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 export const DemoElectionService = {
@@ -446,6 +475,113 @@ export const DemoElectionService = {
       remaining,
       turnoutPercent: totalCodes > 0 ? Math.round((totalVoted / totalCodes) * 100) : 0,
       lastVoteTime: lastUsed?.used_at,
+    };
+  },
+
+  async deleteAllVotingCodes(): Promise<void> {
+    localStorage.removeItem(STORAGE_KEYS.DEMO_CODES);
+    bumpRevision();
+  },
+
+  async deleteAllVotes(): Promise<void> {
+    localStorage.removeItem(STORAGE_KEYS.DEMO_VOTES);
+    localStorage.removeItem(STORAGE_KEYS.DEVICE_VOTES);
+    const candidates = getCandidates().map(c => ({ ...c, votes: 0 }));
+    saveCandidates(candidates);
+    const codes = getCodes().map(c => {
+      const { voteId: _, used_at: __, ...rest } = c;
+      return { ...rest, status: 'unused' as const };
+    });
+    saveCodes(codes);
+    bumpRevision();
+  },
+
+  async deleteCurrentElection(): Promise<void> {
+    localStorage.removeItem(STORAGE_KEYS.DEMO_ELECTION);
+    localStorage.removeItem(STORAGE_KEYS.DEMO_VOTES);
+    localStorage.removeItem(STORAGE_KEYS.DEMO_CODES);
+    localStorage.removeItem(STORAGE_KEYS.DEVICE_VOTES);
+    localStorage.removeItem('smhs_demo_candidates');
+    bumpRevision();
+  },
+
+  async getArchivedElections(): Promise<ArchivedElection[]> {
+    await new Promise(r => setTimeout(r, 200));
+    return getArchivedElections();
+  },
+
+  async archiveElection(): Promise<{ success: boolean; error?: string }> {
+    await new Promise(r => setTimeout(r, 400));
+    const election = getElection();
+    if (!election || election.status !== 'RESULTS_PUBLISHED') {
+      return { success: false, error: 'Election must be published before archiving.' };
+    }
+    const archives = getArchivedElections();
+    if (archives.some(a => a.electionId === election.id)) {
+      return { success: false, error: 'This election has already been archived.' };
+    }
+    const results = await this.getResults();
+    const turnout = await this.getTurnout();
+    const archive: ArchivedElection = {
+      id: `ARCH-${Date.now().toString(36).toUpperCase()}`,
+      electionId: election.id,
+      name: election.name,
+      year: election.year,
+      electionDate: election.ended_at || election.created_at,
+      archivedAt: new Date().toISOString(),
+      totalVotes: results.total_votes,
+      totalStudents: results.total_students,
+      turnoutPercent: results.turnout_percent,
+      results: results.results.map(r => ({
+        role: r.role,
+        winner: r.winner,
+        candidates: r.candidates,
+      })),
+      houseResults: turnout,
+      status: 'Archived',
+    };
+    saveArchivedElections([...archives, archive]);
+    bumpRevision();
+    return { success: true };
+  },
+
+  async deleteArchivedElection(archiveId: string): Promise<void> {
+    await new Promise(r => setTimeout(r, 300));
+    const archives = getArchivedElections().filter(a => a.id !== archiveId);
+    saveArchivedElections(archives);
+    bumpRevision();
+  },
+
+  async deleteAllArchivedElections(): Promise<void> {
+    await new Promise(r => setTimeout(r, 300));
+    localStorage.removeItem(STORAGE_KEYS.DEMO_ARCHIVES);
+    bumpRevision();
+  },
+
+  async deleteEverything(): Promise<void> {
+    await new Promise(r => setTimeout(r, 400));
+    const keys = Object.values(STORAGE_KEYS);
+    keys.forEach(key => localStorage.removeItem(key));
+    sessionStorage.removeItem('vote_submitted');
+    bumpRevision();
+  },
+
+  async getDatabaseOverview(): Promise<DatabaseOverview> {
+    await new Promise(r => setTimeout(r, 200));
+    const codes = getCodes();
+    const votes = getVotes();
+    const candidates = getCandidates();
+    const archives = getArchivedElections();
+    const logs = getLocalAttempts(9999);
+    return {
+      status: 'Connected',
+      storageUsed: estimateStorage(),
+      totalVotes: votes.length,
+      totalVotingCodes: codes.length,
+      totalCandidates: candidates.length,
+      totalArchivedElections: archives.length,
+      totalSecurityLogs: logs.length,
+      lastUpdated: new Date().toISOString(),
     };
   },
 };

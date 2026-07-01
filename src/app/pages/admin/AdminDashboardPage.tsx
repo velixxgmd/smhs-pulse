@@ -4,13 +4,13 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import {
   LayoutDashboard, Users, Key, Download, Settings, Shield, LogOut,
   TrendingUp, Clock, AlertTriangle, Activity, Zap, Play, Pause, Square,
-  RefreshCw, Database, ChevronRight, Loader2, X
+  RefreshCw, Database, ChevronRight, Loader2, X, Archive, HardDrive, BarChart3
 } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useMode } from '../../context/ModeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useRefresh } from '../../context/RefreshContext';
-import type { TurnoutData, AttemptLog, Election } from '../../types';
+import type { TurnoutData, AttemptLog, Election, DatabaseOverview } from '../../types';
 import { toast } from 'sonner';
 import { AdminCandidatesPage } from './AdminCandidatesPage';
 import { AdminCodesPage } from './AdminCodesPage';
@@ -19,8 +19,9 @@ import { AdminSettingsPage } from './AdminSettingsPage';
 import { AdminResultsPage } from './AdminResultsPage';
 import { AdminAttemptLogsPage } from './AdminAttemptLogsPage';
 import { AdminMaintenancePage } from './AdminMaintenancePage';
+import { AdminArchivePage } from './AdminArchivePage';
 
-type AdminTab = 'dashboard' | 'candidates' | 'codes' | 'export' | 'settings' | 'results' | 'logs' | 'maintenance';
+type AdminTab = 'dashboard' | 'candidates' | 'codes' | 'export' | 'settings' | 'results' | 'logs' | 'archive' | 'maintenance';
 
 interface Props {
   onClose: () => void;
@@ -63,20 +64,28 @@ export function AdminDashboardPage({ onClose }: Props) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('smhs_admin_sidebar_collapsed') === '1');
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [dbOverview, setDbOverview] = useState<DatabaseOverview | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [isCurrentArchived, setIsCurrentArchived] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, l, e, s] = await Promise.all([
+      const [t, l, e, s, db, archives] = await Promise.all([
         electionService.getTurnout(),
         electionService.getRecentAttempts(10),
         electionService.getElection(),
         electionService.getTotalStats(),
+        electionService.getDatabaseOverview().catch(() => null),
+        electionService.getArchivedElections().catch(() => []),
       ]);
       setTurnout(t);
       setLogs(l);
       setElection(e);
       setStats(s as typeof stats);
+      setDbOverview(db);
+      setIsCurrentArchived(e ? archives.some((a: import('../../types').ArchivedElection) => a.electionId === e.id) : false);
     } finally {
       setLoading(false);
     }
@@ -129,6 +138,7 @@ const confirmLiveSwitch = async () => {
     { id: 'codes', label: 'Generate Codes', icon: <Key size={16} /> },
     { id: 'export', label: 'Export Center', icon: <Download size={16} /> },
     { id: 'results', label: 'Results', icon: <TrendingUp size={16} /> },
+    { id: 'archive', label: 'Election Archive', icon: <Archive size={16} /> },
     { id: 'logs', label: 'Security Logs', icon: <Shield size={16} /> },
     { id: 'maintenance', label: 'Maintenance', icon: <Database size={16} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={16} /> },
@@ -184,6 +194,24 @@ const confirmLiveSwitch = async () => {
       toast.error(`Finalization failed: ${e}`);
     } finally {
       setFinalizing(false);
+    }
+  };
+
+  const handleArchiveElection = async () => {
+    setArchiving(true);
+    try {
+      const result = await electionService.archiveElection();
+      if (result.success) {
+        toast.success('Election archived successfully.');
+        setShowArchiveModal(false);
+        await loadData();
+      } else {
+        toast.error(result.error || 'Archiving failed.');
+      }
+    } catch (e) {
+      toast.error(`Archiving failed: ${e}`);
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -416,6 +444,24 @@ const confirmLiveSwitch = async () => {
                         <Shield size={14} /> Finalize Election
                       </button>
                     )}
+                    {election?.finalized && (
+                      <button
+                        onClick={() => { if (!isCurrentArchived) setShowArchiveModal(true); }}
+                        disabled={isCurrentArchived}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                        style={{
+                          background: isCurrentArchived ? 'rgba(255,255,255,0.04)' : 'rgba(168,85,247,0.15)',
+                          color: isCurrentArchived ? '#52525B' : '#A855F7',
+                          border: `1px solid ${isCurrentArchived ? 'rgba(255,255,255,0.06)' : 'rgba(168,85,247,0.25)'}`,
+                          cursor: isCurrentArchived ? 'not-allowed' : 'pointer',
+                          opacity: isCurrentArchived ? 0.6 : 1,
+                        }}
+                        title={isCurrentArchived ? 'This election has already been archived.' : 'Archive Election'}
+                      >
+                        <Archive size={14} />
+                        {isCurrentArchived ? 'Already Archived' : 'Archive Election'}
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -445,6 +491,48 @@ const confirmLiveSwitch = async () => {
                 </motion.div>
               ))}
             </div>
+
+            {/* Database Overview */}
+            {dbOverview && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                className="glass rounded-2xl p-6 mb-8"
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl" style={{ background: 'rgba(34,211,238,0.15)' }}>
+                      <Database size={18} style={{ color: '#22D3EE' }} />
+                    </div>
+                    <h3 className="font-bold text-white">Database Overview</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ background: dbOverview.status === 'Connected' ? '#22C55E' : '#EF4444' }} />
+                    <span className="text-xs font-medium" style={{ color: dbOverview.status === 'Connected' ? '#22C55E' : '#EF4444' }}>{dbOverview.status}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                  {[
+                    { label: 'Storage Used', value: dbOverview.storageUsed, icon: <HardDrive size={14} />, color: '#7C3AED' },
+                    { label: 'Votes', value: dbOverview.totalVotes, icon: <BarChart3 size={14} />, color: '#22C55E' },
+                    { label: 'Voting Codes', value: dbOverview.totalVotingCodes, icon: <Key size={14} />, color: '#A855F7' },
+                    { label: 'Candidates', value: dbOverview.totalCandidates, icon: <Users size={14} />, color: '#FBBF24' },
+                    { label: 'Archived', value: dbOverview.totalArchivedElections, icon: <Archive size={14} />, color: '#22D3EE' },
+                    { label: 'Security Logs', value: dbOverview.totalSecurityLogs, icon: <Shield size={14} />, color: '#EF4444' },
+                  ].map(item => (
+                    <div key={item.label} className="p-3 rounded-xl text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <div style={{ color: item.color }}>{item.icon}</div>
+                        <span className="text-xs" style={{ color: '#71717A' }}>{item.label}</span>
+                      </div>
+                      <div className="text-lg font-bold text-white tabular-nums">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-right" style={{ color: '#52525B' }}>
+                  Last Updated: {new Date(dbOverview.lastUpdated).toLocaleString()}
+                </div>
+              </motion.div>
+            )}
 
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -514,6 +602,7 @@ const confirmLiveSwitch = async () => {
         {tab === 'export' && <AdminExportPage />}
         {tab === 'results' && <AdminResultsPage />}
         {tab === 'logs' && <AdminAttemptLogsPage />}
+        {tab === 'archive' && <AdminArchivePage />}
         {tab === 'maintenance' && <AdminMaintenancePage mode={mode} onRestored={loadData} />}
         {tab === 'settings' && <AdminSettingsPage />}
       </main>
@@ -620,6 +709,41 @@ const confirmLiveSwitch = async () => {
                   className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
                   style={{ background: 'linear-gradient(135deg, #EF4444, #DC2626)', opacity: finalizing ? 0.85 : 1 }}>
                   {finalizing ? <><Loader2 size={15} className="animate-spin" />Finalizing...</> : <><Shield size={15} />Finalize Election</>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showArchiveModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="glass-elevated rounded-3xl p-8 w-full max-w-md" role="dialog" aria-modal="true">
+              <div className="flex items-start gap-4 mb-6">
+                <div className="p-2 rounded-xl flex-shrink-0" style={{ background: 'rgba(168,85,247,0.15)' }}>
+                  <Archive size={22} style={{ color: '#A855F7' }} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white mb-1">Archive Election</h2>
+                  <p className="text-sm" style={{ color: '#A1A1AA' }}>
+                    This will archive the election results, statistics, and winning candidates. 
+                    Voting codes and student identities will NOT be preserved.
+                  </p>
+                  <p className="text-sm mt-2 font-semibold" style={{ color: '#EF4444' }}>
+                    This action CANNOT be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowArchiveModal(false)} disabled={archiving} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#A1A1AA', opacity: archiving ? 0.6 : 1 }}>
+                  Cancel
+                </button>
+                <button onClick={handleArchiveElection} disabled={archiving}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #A855F7, #7C3AED)', opacity: archiving ? 0.85 : 1 }}>
+                  {archiving ? <><Loader2 size={15} className="animate-spin" />Archiving...</> : <><Archive size={15} />Archive Election</>}
                 </button>
               </div>
             </motion.div>

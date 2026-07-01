@@ -211,3 +211,121 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+export function exportArchivePDF(archive: import('../types').ArchivedElection): void {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210;
+  const margin = 20;
+  let y = margin;
+
+  doc.setFillColor(9, 9, 11);
+  doc.rect(0, 0, W, 40, 'F');
+  doc.setTextColor(124, 58, 237);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('SMHS ELECTION ARCHIVE REPORT', W / 2, y + 10, { align: 'center' });
+  doc.setTextColor(168, 85, 247);
+  doc.setFontSize(11);
+  doc.text(`${archive.name} — ${archive.year}`, W / 2, y + 20, { align: 'center' });
+  doc.setTextColor(161, 161, 170);
+  doc.setFontSize(9);
+  doc.text(`Archived: ${new Date(archive.archivedAt).toLocaleString()}`, W / 2, y + 28, { align: 'center' });
+
+  y = 50;
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Total Votes: ${archive.totalVotes}    Total Students: ${archive.totalStudents}    Turnout: ${archive.turnoutPercent}%`, margin, y);
+  y += 10;
+
+  archive.results.forEach(r => {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFillColor(124, 58, 237);
+    doc.rect(margin, y, W - margin * 2, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`POSITION: ${r.role.toUpperCase()}`, margin + 3, y + 5.5);
+    y += 12;
+
+    doc.setTextColor(30, 30, 30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(`Winner: ${r.winner?.name || 'TBD'} (${r.winner?.votes || 0} votes)`, margin, y);
+    y += 8;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    r.candidates.forEach(c => {
+      doc.text(`  • ${c.name} — ${c.vote_count} votes`, margin + 5, y);
+      y += 6;
+    });
+    y += 6;
+  });
+
+  if (archive.houseResults && archive.houseResults.length > 0) {
+    if (y > 240) { doc.addPage(); y = 20; }
+    y += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('House Results:', margin, y);
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    archive.houseResults.forEach(h => {
+      doc.text(`  ${h.class}${h.section}: ${h.voted}/${h.total} (${h.percent}%)`, margin + 5, y);
+      y += 6;
+    });
+  }
+
+  y += 10;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Verified & Approved', margin, y);
+  doc.setDrawColor(150);
+  doc.line(margin, y + 10, 90, y + 10);
+  doc.text('Signature (Principal / Election Committee)', margin, y + 14);
+
+  doc.save(`SMHS-Archive-${archive.name.replace(/\s+/g, '-')}.pdf`);
+}
+
+export function exportArchiveXLSX(archive: import('../types').ArchivedElection): void {
+  const data: (string | number)[][] = [
+    ['Election Archive Report'],
+    ['Election Name', archive.name],
+    ['Year', archive.year],
+    ['Election Date', new Date(archive.electionDate).toLocaleString()],
+    ['Archived At', new Date(archive.archivedAt).toLocaleString()],
+    ['Total Votes', archive.totalVotes],
+    ['Total Students', archive.totalStudents],
+    ['Turnout %', archive.turnoutPercent],
+    [],
+    ['Position', 'Candidate Name', 'Class', 'Section', 'Votes'],
+  ];
+
+  archive.results.forEach(r => {
+    r.candidates.forEach((c, i) => {
+      data.push([i === 0 ? r.role : '', c.name, c.class, c.section, c.vote_count]);
+    });
+  });
+
+  if (archive.houseResults && archive.houseResults.length > 0) {
+    data.push([]);
+    data.push(['House Results']);
+    data.push(['Class', 'Section', 'Voted', 'Total', 'Percent']);
+    archive.houseResults.forEach(h => {
+      data.push([h.class, h.section, h.voted, h.total, `${h.percent}%`]);
+    });
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = data[0].map(() => ({ wch: 20 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Archive');
+  XLSX.writeFile(wb, `SMHS-Archive-${archive.name.replace(/\s+/g, '-')}.xlsx`);
+}
+
+export function exportArchiveJSON(archive: import('../types').ArchivedElection): void {
+  const blob = new Blob([JSON.stringify(archive, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, `SMHS-Archive-${archive.name.replace(/\s+/g, '-')}.json`);
+}

@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   DEMO_ADMIN: 'smhs_demo_admin',
   DEMO_CODES: 'smhs_demo_codes',
   DEMO_ELECTION: 'smhs_demo_election',
+  DEMO_ARCHIVES: 'smhs_demo_archives',
   DEVICE_VOTES: 'smhs_demo_device_votes',
   GRAPHICS_QUALITY: 'smhs_graphics_quality',
   DEVICE_MODE: 'smhs_device_mode',

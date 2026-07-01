@@ -3,7 +3,8 @@ import { publicAnonKey } from '../../../utils/supabase/info';
 import type {
   Candidate, VotingCode, AttemptLog, TurnoutData, Election,
   CodeValidationResult, VotePayload, VoteResult, ElectionResults,
-  BatchConfig, ElectionStatus, VotingLayout, VoteIdLookupResult
+  BatchConfig, ElectionStatus, VotingLayout, VoteIdLookupResult,
+  ArchivedElection, DatabaseOverview
 } from '../types';
 
 const headers = () => ({
@@ -202,5 +203,43 @@ async submitVote(payload: VotePayload): Promise<VoteResult> {
 
   async getTotalStats() {
     return api(`/stats`);
+  },
+
+  async deleteAllVotingCodes(): Promise<void> {
+    await api(`/admin/delete-codes`, { method: 'POST' });
+  },
+
+  async deleteAllVotes(): Promise<void> {
+    await api(`/admin/delete-votes`, { method: 'POST' });
+  },
+
+  async deleteCurrentElection(): Promise<void> {
+    await api(`/admin/delete-election`, { method: 'POST' });
+  },
+
+  async getArchivedElections(): Promise<ArchivedElection[]> {
+    return api(`/archives`);
+  },
+
+  async archiveElection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await api(`/admin/archive-election`, { method: 'POST' });
+    } catch (e) { return { success: false, error: String(e) }; }
+  },
+
+  async deleteArchivedElection(archiveId: string): Promise<void> {
+    await api(`/admin/archives/${archiveId}`, { method: 'DELETE' });
+  },
+
+  async deleteAllArchivedElections(): Promise<void> {
+    await api(`/admin/archives`, { method: 'DELETE' });
+  },
+
+  async deleteEverything(): Promise<void> {
+    await api(`/admin/delete-everything`, { method: 'POST' });
+  },
+
+  async getDatabaseOverview(): Promise<DatabaseOverview> {
+    return api(`/admin/database-overview`);
   },
 };

@@ -12,6 +12,8 @@ export type AttemptReason = 'USED_CODE' | 'DUPLICATE_DEVICE' | 'INVALID' | 'SESS
 
 export type ExportFormat = 'csv' | 'xlsx' | 'txt' | 'pdf';
 
+export type ArchiveExportFormat = 'pdf' | 'xlsx' | 'json';
+
 export type GraphicsQuality = 'ultra' | 'high' | 'balanced' | 'performance' | 'minimal';
 
 export type DeviceMode = 'desktop' | 'mobile';
@@ -142,4 +144,36 @@ export interface VoteIdLookupResult {
   connectedCode?: string | null;
   finalized?: boolean;
   error?: string;
+}
+
+export interface ArchivedCandidateResult {
+  role: string;
+  winner: Candidate;
+  candidates: Array<Candidate & { vote_count: number }>;
+}
+
+export interface ArchivedElection {
+  id: string;
+  electionId: string;
+  name: string;
+  year: number;
+  electionDate: string;
+  archivedAt: string;
+  totalVotes: number;
+  totalStudents: number;
+  turnoutPercent: number;
+  results: ArchivedCandidateResult[];
+  houseResults?: TurnoutData[];
+  status: string;
+}
+
+export interface DatabaseOverview {
+  status: string;
+  storageUsed: string;
+  totalVotes: number;
+  totalVotingCodes: number;
+  totalCandidates: number;
+  totalArchivedElections: number;
+  totalSecurityLogs: number;
+  lastUpdated: string;
 }

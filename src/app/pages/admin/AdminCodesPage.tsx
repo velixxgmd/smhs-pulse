@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Key, Search, Loader2, CheckCircle, XCircle, Plus, X, Lock } from 'lucide-react';
+import { Key, Search, Loader2, CheckCircle, XCircle, Plus, X, Lock, ArrowRight } from 'lucide-react';
 import { electionService } from '../../services/electionService';
 import { useRefresh } from '../../context/RefreshContext';
 import type { VotingCode, VoteIdLookupResult, Election } from '../../types';
@@ -11,9 +11,14 @@ export function AdminCodesPage() {
   const [codes, setCodes] = useState<VotingCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showGenerate, setShowGenerate] = useState(false);
-  const [genForm, setGenForm] = useState({ class: '10', section: 'A', max_roll: 30 });
+  const [genForm, setGenForm] = useState({ class: '10', section: 'A', max_roll: '' });
   const [generating, setGenerating] = useState(false);
   const [election, setElection] = useState<Election | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const classRef = useRef<HTMLSelectElement>(null);
+  const sectionRef = useRef<HTMLSelectElement>(null);
+  const maxRollRef = useRef<HTMLInputElement>(null);
 
   // Student lookup state
   const [lookupMethod, setLookupMethod] = useState<'student' | 'voteId'>('student');
@@ -45,15 +50,38 @@ export function AdminCodesPage() {
   useEffect(() => { load(); }, [revision]);
 
   const handleGenerate = async () => {
-    if (!genForm.max_roll || genForm.max_roll < 1) return;
+    setValidationError(null);
+    if (!genForm.max_roll || genForm.max_roll.trim() === '') {
+      setValidationError('Please enter the highest roll number.');
+      return;
+    }
+    const maxRoll = parseInt(genForm.max_roll, 10);
+    if (!Number.isFinite(maxRoll) || maxRoll < 1) {
+      setValidationError('Please enter the highest roll number.');
+      return;
+    }
     setGenerating(true);
     try {
-      const newCodes = await electionService.generateCodes(genForm);
+      const newCodes = await electionService.generateCodes({ class: genForm.class, section: genForm.section, max_roll: maxRoll });
       toast.success(`${newCodes.length} codes generated successfully!`);
-      setShowGenerate(false);
       await load();
     } catch (e) { toast.error(`Failed: ${e}`); }
     finally { setGenerating(false); }
+  };
+
+  const handleNextSection = () => {
+    const sections = ['A', 'B', 'C', 'D', 'E'];
+    const currentIdx = sections.indexOf(genForm.section);
+    if (currentIdx < sections.length - 1) {
+      setGenForm(f => ({ ...f, section: sections[currentIdx + 1] }));
+    }
+  };
+
+  const isLastSection = genForm.section === 'E';
+
+  const handleQuickFill = (val: number) => {
+    setGenForm(f => ({ ...f, max_roll: String(val) }));
+    setValidationError(null);
   };
 
   const handleStudentLookup = async () => {
@@ -347,7 +375,7 @@ export function AdminCodesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>Class</label>
-                    <select value={genForm.class} onChange={e => setGenForm(f => ({ ...f, class: e.target.value }))}
+                    <select ref={classRef} value={genForm.class} onChange={e => setGenForm(f => ({ ...f, class: e.target.value }))}
                       className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none"
                       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
                       {['6','7','8','9','10'].map(c => <option key={c} value={c} style={{ background: '#18181B' }}>{c}</option>)}
@@ -355,7 +383,7 @@ export function AdminCodesPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>Section</label>
-                    <select value={genForm.section} onChange={e => setGenForm(f => ({ ...f, section: e.target.value }))}
+                    <select ref={sectionRef} value={genForm.section} onChange={e => setGenForm(f => ({ ...f, section: e.target.value }))}
                       className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none"
                       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
                       {['A','B','C','D','E'].map(s => <option key={s} value={s} style={{ background: '#18181B' }}>{s}</option>)}
@@ -363,20 +391,44 @@ export function AdminCodesPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>Max Roll Number</label>
-                  <input type="number" min={1} max={200} value={genForm.max_roll} onChange={e => setGenForm(f => ({ ...f, max_roll: parseInt(e.target.value) || 1 }))}
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#71717A' }}>Highest Roll Number</label>
+                  <input ref={maxRollRef} type="number" min={1} max={200} value={genForm.max_roll} onChange={e => { setGenForm(f => ({ ...f, max_roll: e.target.value })); setValidationError(null); }}
+                    placeholder="Enter highest roll number"
                     className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none"
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }} />
-                  <p className="text-xs mt-1" style={{ color: '#52525B' }}>Will generate {genForm.max_roll} codes (Roll 1 to {genForm.max_roll})</p>
+                  {validationError && (
+                    <p className="text-xs mt-1.5" style={{ color: '#EF4444' }}>{validationError}</p>
+                  )}
+                  <div className="mt-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider mr-2" style={{ color: '#52525B' }}>Quick Fill</span>
+                    {[30, 35, 40].map(val => (
+                      <button key={val} onClick={() => handleQuickFill(val)}
+                        className="text-xs px-2.5 py-1 rounded-lg font-medium mr-1.5 transition-colors"
+                        style={{ background: 'rgba(124,58,237,0.1)', color: '#A855F7', border: '1px solid rgba(124,58,237,0.2)' }}>
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-3">
-                <button onClick={() => setShowGenerate(false)} className="flex-1 py-3 rounded-xl text-sm font-semibold"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: '#A1A1AA' }}>Cancel</button>
-                <button onClick={handleGenerate} disabled={generating} className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
-                  style={{ background: 'linear-gradient(135deg, #7C3AED, #A855F7)' }}>
+              <div className="flex flex-col gap-3">
+                <button onClick={handleGenerate} disabled={generating} className="w-full py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #7C3AED, #A855F7)', opacity: generating ? 0.85 : 1 }}>
                   {generating ? <><Loader2 size={15} className="animate-spin" />Generating...</> : <><Key size={15} />Generate</>}
                 </button>
+                <button onClick={handleNextSection} disabled={isLastSection || generating}
+                  className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+                  style={{
+                    background: isLastSection ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)',
+                    color: isLastSection ? '#52525B' : '#A1A1AA',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    cursor: isLastSection ? 'not-allowed' : 'pointer',
+                  }}>
+                  <ArrowRight size={15} />
+                  {isLastSection ? 'You have reached the last section for this class' : 'Generate Next Section'}
+                </button>
+                <button onClick={() => setShowGenerate(false)} className="w-full py-3 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#A1A1AA' }}>Cancel</button>
               </div>
             </motion.div>
           </div>
